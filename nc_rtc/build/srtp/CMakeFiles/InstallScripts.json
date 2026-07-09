@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/jon/research/netchan-v2/demo/nc_rtc/build/srtp/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

@@ -1,0 +1,93 @@
+<!doctype html>
+<!-- Made by a machine. PUBLIC DOMAIN (CC0-1.0) -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>netchan-v2 &mdash; Caves of Thor (wasm)</title>
+<style>
+  html, body { margin: 0; background: #14110d; color: #d8cbb4;
+    font: 14px/1.5 system-ui, sans-serif; }
+  main { max-width: 700px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.15rem; font-weight: 600; letter-spacing: .02em; }
+  canvas { display: block; margin: 1rem 0; image-rendering: pixelated;
+    background: #000; width: 100%; max-width: 640px; height: auto;
+    border: 1px solid #3a3226; }
+  kbd { background: #2a2419; border: 1px solid #4a4030; border-radius: 3px;
+    padding: 0 .35em; font-family: ui-monospace, monospace; font-size: .9em; }
+  p.hint { color: #9a8f79; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Caves of Thor &mdash; running in WebAssembly</h1>
+  <canvas id="screen" width="640" height="500" tabindex="0"></canvas>
+  <p class="hint">
+    <kbd>&larr;&uarr;&darr;&rarr;</kbd> move &nbsp;
+    <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> aim &amp; fire &nbsp;
+    <kbd>Space</kbd> fire along facing.
+    Click the canvas first so it takes the keys.
+  </p>
+  <p class="hint">
+    The authoritative server and this client both run inside the wasm module,
+    connected over a netchan loopback. The transport is the only thing a real
+    remote game would swap out.
+  </p>
+</main>
+
+<script>
+  // CGA 16-colour palette, indexed by attribute nibble.
+  const CGA = ['#000000','#0000aa','#00aa00','#00aaaa','#aa0000','#aa00aa',
+               '#aa5500','#aaaaaa','#555555','#5555ff','#55ff55','#55ffff',
+               '#ff5555','#ff55ff','#ffff55','#ffffff'];
+  const CELL_W = 16, CELL_H = 20;
+  const cv = document.getElementById('screen');
+  const ctx = cv.getContext('2d');
+  ctx.textBaseline = 'top';
+  ctx.font = '16px ui-monospace, monospace';
+
+  // Key names -> bit index, matching the enum in plat.h.
+  const KEY = {
+    ArrowUp: 0, ArrowDown: 1, ArrowLeft: 2, ArrowRight: 3,
+    ' ': 4, q: 5, Enter: 6, w: 7, s: 8, a: 9, d: 10,
+  };
+  const bitFor = (k) => (k.length === 1 ? KEY[k.toLowerCase()] : KEY[k]);
+
+  const game = {
+    keymask: 0,
+    drawGrid(cells, w, h) {
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const o = (y * w + x) * 2, ch = cells[o], attr = cells[o + 1];
+          ctx.fillStyle = CGA[(attr >> 4) & 15];
+          ctx.fillRect(x * CELL_W, y * CELL_H, CELL_W, CELL_H);
+          if (ch > 32) {
+            ctx.fillStyle = CGA[attr & 15];
+            ctx.fillText(String.fromCharCode(ch), x * CELL_W + 2, y * CELL_H + 2);
+          }
+        }
+      }
+    },
+  };
+
+  cv.addEventListener('keydown', (e) => {
+    const b = bitFor(e.key);
+    if (b !== undefined) { game.keymask |= (1 << b); e.preventDefault(); }
+  });
+  cv.addEventListener('keyup', (e) => {
+    const b = bitFor(e.key);
+    if (b !== undefined) { game.keymask &= ~(1 << b); e.preventDefault(); }
+  });
+  cv.focus();
+</script>
+<script src="web_demo.js"></script>
+<script>
+  // createGame is the MODULARIZE factory; main() runs the netchan setup,
+  // then we drive one web_step() per animation frame.
+  createGame(game).then((m) => {
+    const loop = () => { m._web_step(); requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  });
+</script>
+</body>
+</html>

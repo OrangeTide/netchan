@@ -1,0 +1,121 @@
+<!doctype html>
+<!-- Made by a machine. PUBLIC DOMAIN (CC0-1.0) -->
+<!-- Browser client over a WebRTC data channel, via rtc_gateway. It reuses the
+     SAME wasm module (web_client.js) as the WebSocket build: nc_web just calls
+     Module.wsSend / web_client_recv, so only the JS transport wiring changes,
+     an RTCDataChannel where the WebSocket was. Signaling is one HTTP POST. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>netchan-v2 &mdash; Caves of Thor (WebRTC)</title>
+<style>
+  html, body { margin: 0; background: #14110d; color: #d8cbb4;
+    font: 14px/1.5 system-ui, sans-serif; }
+  main { max-width: 700px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.15rem; font-weight: 600; }
+  canvas { display: block; margin: 1rem 0; image-rendering: pixelated;
+    background: #000; width: 100%; max-width: 640px; height: auto;
+    border: 1px solid #3a3226; }
+  kbd { background: #2a2419; border: 1px solid #4a4030; border-radius: 3px;
+    padding: 0 .35em; font-family: ui-monospace, monospace; font-size: .9em; }
+  p.hint { color: #9a8f79; }
+  #status { font-family: ui-monospace, monospace; font-size: .85rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Caves of Thor &mdash; browser client over a WebRTC data channel</h1>
+  <p id="status">connecting&hellip;</p>
+  <canvas id="screen" width="640" height="500" tabindex="0"></canvas>
+  <p class="hint">
+    <kbd>&larr;&uarr;&darr;&rarr;</kbd> move &nbsp;
+    <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> aim &amp; fire &nbsp;
+    <kbd>Space</kbd> fire. Click the canvas first.
+  </p>
+  <p class="hint">
+    The data channel is unreliable and unordered, exactly what netchan wants
+    underneath its own reliability. The gateway relays this browser to the
+    UDP game server, so a terminal player shares the game.
+  </p>
+</main>
+
+<script>
+  const CGA = ['#000000','#0000aa','#00aa00','#00aaaa','#aa0000','#aa00aa',
+               '#aa5500','#aaaaaa','#555555','#5555ff','#55ff55','#55ffff',
+               '#ff5555','#ff55ff','#ffff55','#ffffff'];
+  const CELL_W = 16, CELL_H = 20;
+  const cv = document.getElementById('screen'), ctx = cv.getContext('2d');
+  const statusEl = document.getElementById('status');
+  ctx.textBaseline = 'top'; ctx.font = '16px ui-monospace, monospace';
+  const KEY = { ArrowUp:0, ArrowDown:1, ArrowLeft:2, ArrowRight:3,
+                ' ':4, q:5, Enter:6, w:7, s:8, a:9, d:10 };
+  const bitFor = (k) => (k.length === 1 ? KEY[k.toLowerCase()] : KEY[k]);
+
+  let dc = null;
+  const Module = {
+    keymask: 0,
+    // netchan hands us a datagram; send it on the data channel.
+    wsSend(bytes) { if (dc && dc.readyState === 'open') dc.send(bytes); },
+    drawGrid(cells, w, h) {
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const o = (y*w + x)*2, ch = cells[o], attr = cells[o+1];
+        ctx.fillStyle = CGA[(attr>>4)&15];
+        ctx.fillRect(x*CELL_W, y*CELL_H, CELL_W, CELL_H);
+        if (ch > 32) { ctx.fillStyle = CGA[attr&15];
+          ctx.fillText(String.fromCharCode(ch), x*CELL_W+2, y*CELL_H+2); }
+      }
+    },
+  };
+  cv.addEventListener('keydown', (e) => { const b = bitFor(e.key);
+    if (b !== undefined) { Module.keymask |= (1<<b); e.preventDefault(); } });
+  cv.addEventListener('keyup', (e) => { const b = bitFor(e.key);
+    if (b !== undefined) { Module.keymask &= ~(1<<b); e.preventDefault(); } });
+  cv.focus();
+
+  // Gather ICE fully (libpeer is non-trickle), then POST the offer once.
+  function gathered(pc) {
+    return new Promise((res) => {
+      if (pc.iceGatheringState === 'complete') return res();
+      pc.addEventListener('icegatheringstatechange', () => {
+        if (pc.iceGatheringState === 'complete') res();
+      });
+    });
+  }
+</script>
+<script src="web_client.js"></script>
+<script>
+  createGameClient(Module).then(async (m) => {
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+    });
+    dc = pc.createDataChannel('game', { ordered: false, maxRetransmits: 0 });
+    dc.binaryType = 'arraybuffer';
+
+    dc.onopen = () => {
+      statusEl.textContent = 'data channel open';
+      const loop = () => { m._web_step(); requestAnimationFrame(loop); };
+      requestAnimationFrame(loop);
+    };
+    dc.onmessage = (e) => {
+      const u8 = new Uint8Array(e.data);
+      m.HEAPU8.set(u8, m._nc_web_inbuf());
+      m._web_client_recv(u8.length);
+    };
+    dc.onclose = () => { statusEl.textContent = 'disconnected'; };
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    await gathered(pc);
+    statusEl.textContent = 'negotiating…';
+    const resp = await fetch('/offer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/sdp' },
+      body: pc.localDescription.sdp,
+    });
+    const answer = await resp.text();
+    await pc.setRemoteDescription({ type: 'answer', sdp: answer });
+  });
+</script>
+</body>
+</html>

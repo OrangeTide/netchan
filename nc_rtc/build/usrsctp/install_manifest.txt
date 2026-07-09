@@ -1,0 +1,3 @@
+/home/jon/research/netchan-v2/demo/nc_rtc/build/dist/lib/libusrsctp.a
+/home/jon/research/netchan-v2/demo/nc_rtc/build/dist/include/usrsctp.h
+/home/jon/research/netchan-v2/demo/nc_rtc/build/dist/lib/pkgconfig/usrsctp.pc

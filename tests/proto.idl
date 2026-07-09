@@ -1,0 +1,24 @@
+# proto.idl -- netchan-v2 demo game wire messages (microser IDL)
+#
+# A minimal server-authoritative protocol for the Caves-of-Thor style
+# 4-player demo. The static map is derived deterministically from a seed
+# the client receives at join time (it runs game_init(seed) locally), so
+# each tick only has to broadcast the dynamic entity state.
+
+# client -> server, unreliable, one per input frame
+message PlayerInput
+    uint32 seq = 1          # input sequence number, newest wins
+    uint8 input = 2         # twin-stick byte: low nibble move dir, high nibble fire dir
+end
+
+# server -> client, reliable, sent once when a client joins
+message Welcome
+    uint16 your_player = 1  # this client's player slot, 0..3
+    uint16 seed = 2         # map seed; client runs game_init(seed) for the static map
+end
+
+# server -> clients, unreliable, one per simulation tick
+message Snapshot
+    uint32 tick = 1
+    bytes state = 2         # packed players | creatures | shots (see game_wire.h)
+end

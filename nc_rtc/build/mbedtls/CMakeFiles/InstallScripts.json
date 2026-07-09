@@ -1,0 +1,10 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/jon/research/netchan-v2/demo/nc_rtc/build/mbedtls/cmake_install.cmake",
+		"/home/jon/research/netchan-v2/demo/nc_rtc/build/mbedtls/include/cmake_install.cmake",
+		"/home/jon/research/netchan-v2/demo/nc_rtc/build/mbedtls/3rdparty/cmake_install.cmake",
+		"/home/jon/research/netchan-v2/demo/nc_rtc/build/mbedtls/library/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
