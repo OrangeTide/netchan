@@ -1,0 +1,13 @@
+/home/jon/research/netchan-v2/demo/nc_rtc/build/usrsctp/CMakeFiles/edit_cache.dir
+/home/jon/research/netchan-v2/demo/nc_rtc/build/usrsctp/CMakeFiles/rebuild_cache.dir
+/home/jon/research/netchan-v2/demo/nc_rtc/build/usrsctp/CMakeFiles/list_install_components.dir
+/home/jon/research/netchan-v2/demo/nc_rtc/build/usrsctp/CMakeFiles/install.dir
+/home/jon/research/netchan-v2/demo/nc_rtc/build/usrsctp/CMakeFiles/install/local.dir
+/home/jon/research/netchan-v2/demo/nc_rtc/build/usrsctp/CMakeFiles/install/strip.dir
+/home/jon/research/netchan-v2/demo/nc_rtc/build/usrsctp/usrsctplib/CMakeFiles/usrsctp.dir
+/home/jon/research/netchan-v2/demo/nc_rtc/build/usrsctp/usrsctplib/CMakeFiles/edit_cache.dir
+/home/jon/research/netchan-v2/demo/nc_rtc/build/usrsctp/usrsctplib/CMakeFiles/rebuild_cache.dir
+/home/jon/research/netchan-v2/demo/nc_rtc/build/usrsctp/usrsctplib/CMakeFiles/list_install_components.dir
+/home/jon/research/netchan-v2/demo/nc_rtc/build/usrsctp/usrsctplib/CMakeFiles/install.dir
+/home/jon/research/netchan-v2/demo/nc_rtc/build/usrsctp/usrsctplib/CMakeFiles/install/local.dir
+/home/jon/research/netchan-v2/demo/nc_rtc/build/usrsctp/usrsctplib/CMakeFiles/install/strip.dir

@@ -1,0 +1,7 @@
+_build
+_out
+compile_commands.json
+TODO.md
+plan.md
+.*
+!.git*
