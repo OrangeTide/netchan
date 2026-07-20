@@ -6,6 +6,15 @@ handshake that never completes, not as a subtle failure later.
 
 ## Unreleased
 
+### Fixed
+
+- `nc_crypto` and `keystore` called `getrandom(2)` unconditionally, so
+  neither compiled anywhere but Linux. Both now select a backend at compile
+  time: `arc4random_buf` on macOS and the BSDs, `getrandom(2)` on Linux with
+  a retry on `EINTR`, and `/dev/urandom` otherwise, which also covers a Linux
+  kernel too old for the syscall. macOS is now built and tested in CI, which
+  is how this was found.
+
 ### Added
 
 - `microchan/`, a second library: the same idea with every buffer fixed at
