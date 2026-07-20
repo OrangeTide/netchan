@@ -1,7 +1,0 @@
-/home/jon/research/netchan-v2/demo/nc_rtc/build/srtp/CMakeFiles/srtp2.dir
-/home/jon/research/netchan-v2/demo/nc_rtc/build/srtp/CMakeFiles/edit_cache.dir
-/home/jon/research/netchan-v2/demo/nc_rtc/build/srtp/CMakeFiles/rebuild_cache.dir
-/home/jon/research/netchan-v2/demo/nc_rtc/build/srtp/CMakeFiles/list_install_components.dir
-/home/jon/research/netchan-v2/demo/nc_rtc/build/srtp/CMakeFiles/install.dir
-/home/jon/research/netchan-v2/demo/nc_rtc/build/srtp/CMakeFiles/install/local.dir
-/home/jon/research/netchan-v2/demo/nc_rtc/build/srtp/CMakeFiles/install/strip.dir
