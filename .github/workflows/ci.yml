@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.os }} / ${{ matrix.cc }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        cc: [gcc, clang]
+        exclude:
+          # gcc on the macOS runners is a clang shim, so it tests nothing new
+          - os: macos-latest
+            cc: gcc
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: make -j"$(getconf _NPROCESSORS_ONLN)" CC=${{ matrix.cc }}
+
+      - name: Test
+        run: make run-tests CC=${{ matrix.cc }}
+
+  sanitizers:
+    name: asan + ubsan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          make -j"$(getconf _NPROCESSORS_ONLN)" \
+            CFLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g -O1" \
+            LDFLAGS="-fsanitize=address,undefined"
+
+      - name: Test
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: |
+          make run-tests \
+            CFLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g -O1" \
+            LDFLAGS="-fsanitize=address,undefined"
+
+  vendorable:
+    name: cc-only core build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The point of Makefile.simple: prove the core still builds and passes
+      # with nothing but a compiler and an -I per directory.
+      - name: Build and test the core alone
+        run: make -f Makefile.simple check
+
+  wasm:
+    name: wasm32
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mymindstorm/setup-emsdk@v14
+
+      # Only the socketless layers compile here, which is the check that
+      # matters: the core must not have grown a dependency on a socket.
+      - name: Build
+        run: make -j"$(getconf _NPROCESSORS_ONLN)" CC=emcc CXX=em++

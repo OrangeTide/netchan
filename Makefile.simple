@@ -1,18 +1,31 @@
-CFLAGS = -Wall -W
-ifneq (release,)
-  # Release
-  CFLAGS += -Os -flto
-else
-  # Debug
-  CFLAGS += -Og -g
-endif
-CFLAGS += $(if $(PKGS),$(shell pkg-config --cflags $(PKGS)))
-LDLIBS += $(if $(PKGS),$(shell pkg-config --libs $(PKGS)))
-CPPFLAGS += -Iinclude/
-RM ?= rm -f
-all :: netchan_test netchan_example
-clean :: ; $(RM) netchan_test netchan_example
-netchan_test : netchan_test.c netchan.c netchan.h nc_addr.h
-	$(CC) $(CFLAGS) -o $@ netchan_test.c netchan.c
-netchan_example : netchan_example.c netchan.c nc_udp.c netchan.h nc_addr.h nc_udp.h
-	$(CC) $(CFLAGS) -o $@ netchan_example.c netchan.c nc_udp.c
+# A cc-only build of the netchan core and its socket example.
+#
+# This exists to keep the no-dependencies claim honest. There is no configure
+# step, no generated file, and nothing to install; the whole library is a
+# handful of .c files and an -I per directory. Use the top-level GNUmakefile
+# for the real build, which also covers the crypto and auth layers, the tests,
+# and the rest of the examples.
+#
+#   make -f Makefile.simple
+
+CFLAGS  ?= -std=c11 -Wall -W -Og -g
+# The core calls clock_gettime(CLOCK_MONOTONIC) for its timers, which strict
+# c11 does not expose.
+CPPFLAGS = -D_POSIX_C_SOURCE=200809L -Isrc -Itransport
+RM      ?= rm -f
+
+all: netchan_test netchan_example
+
+netchan_test: tests/netchan_test.c src/netchan.c
+	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $^
+
+netchan_example: examples/chat/netchan_example.c src/netchan.c transport/nc_udp.c
+	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $^
+
+check: netchan_test
+	./netchan_test
+
+clean:
+	$(RM) netchan_test netchan_example
+
+.PHONY: all check clean

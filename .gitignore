@@ -1,8 +1,23 @@
 _build
 _out
-.*
-!.git*
 compile_commands.json
+
+# binaries from Makefile.simple
+/netchan_test
+/netchan_example
+
+# files the auth examples create if run in place instead of a scratch dir
+/host_key
+/host_key.orig
+/known_hosts
+/authorized_keys
+/passwd
+/id_netchan
+/id_rogue
+
+# working notes, not part of the library
 TODO.md
 plan.md
 CLAUDE.md
+.*
+!.git*
