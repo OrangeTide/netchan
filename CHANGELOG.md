@@ -4,6 +4,23 @@ Wire compatibility holds within a minor version and no further. There is no
 version negotiation on the wire, so a skew between two peers shows up as a
 handshake that never completes, not as a subtle failure later.
 
+## Unreleased
+
+### Added
+
+- `microchan/`, a second library: the same idea with every buffer fixed at
+  compile time, no `malloc`, Go-Back-N over an 8-message window instead of
+  selective ack, and a core that fits in a 16-bit large-model DOS binary.
+  Transports are IPX for MS-DOS and UDP for a host. It brings its own tests,
+  the four-player `thor` game the variant exists for, and an Open Watcom
+  `makefile` for the DOS target.
+
+  It is a separate library, not a build option. Its API was renamed on import
+  from `nc_*`/`NC_*`/`struct netchan` to `mc_*`/`MC_*`/`struct microchan`,
+  because the two trees otherwise both define `struct nc_addr` with different
+  layouts and both ship an `nc_addr.h`, `nc_udp.c/h`, and `netchan.c/h`. Same
+  names, different meanings, one repository. Nothing links both.
+
 ## 0.3.0
 
 The library is reorganised into layers, each in its own directory, and split

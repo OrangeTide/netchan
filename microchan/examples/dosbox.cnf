@@ -1,0 +1,22 @@
+# A minimal DOSBox config for playing thor over IPX.
+#
+# Mount the directory the Open Watcom build wrote its .exe into. From the
+# microchan root that is _dos/, so run DOSBox from there, or replace ./ below
+# with an absolute path.
+#
+# A fixed cycles value matters: cycles=max makes two co-running instances
+# starve each other.
+#
+# Point ipxnet at wherever the relay runs. For a joining player, drop the
+# trailing 's' from the thor.exe line.
+
+[cpu]
+cycles=20000
+[ipx]
+ipx=true
+[autoexec]
+mount c ./
+c:
+ipxnet connect 127.0.0.1 19900
+thor.exe s
+exit
