@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <poll.h>
 
 static int g_fail = 0;
 
@@ -44,6 +45,25 @@ send_pump(struct mc_udp *u, struct microchan *nc)
             continue;           /* simulate packet loss */
         mc_udp_send(u, buf, (size_t)n, &to);
     }
+}
+
+/*
+ * Wait for a datagram to become readable. The reliable tests reach their
+ * goal through retransmission, so a late delivery only costs them an
+ * iteration, but an unreliable datagram arrives once or not at all. Linux
+ * queues loopback traffic inside sendto(), while macOS hands it to a
+ * separate context, so a drain loop that never waits can finish before the
+ * last datagram lands.
+ */
+static void
+wait_pkt(struct mc_udp *u, int ms)
+{
+    struct pollfd p;
+
+    p.fd = u->fd;
+    p.events = POLLIN;
+    p.revents = 0;
+    poll(&p, 1, ms);
 }
 
 int
@@ -151,9 +171,10 @@ main(void)
             now += 20;
         }
         /* drain any in flight */
-        for (i = 0; i < 5 && got < N; i++) {
+        for (i = 0; i < 20 && got < N; i++) {
             int n;
             mc_service(s, now);
+            wait_pkt(&su, 10);
             recv_pump(&su, s);
             while ((n = mc_read(s_unr, rb, sizeof(rb))) > 0)
                 got++;
