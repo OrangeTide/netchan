@@ -15,6 +15,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <poll.h>
 #include <unistd.h>
 
 static int tests_run, tests_passed;
@@ -100,6 +101,22 @@ flush(int fd, struct netchan_conn *c)
     }
 }
 
+/*
+ * Loopback delivery is not synchronous everywhere. Linux queues the datagram
+ * inside sendto(), but on macOS it is handed to a separate context, so a
+ * non-blocking read right after the send finds nothing. Give the packet a
+ * short window to arrive before deciding the socket is idle.
+ */
+static int
+wait_readable(int fd, int ms)
+{
+    struct pollfd p;
+    p.fd = fd;
+    p.events = POLLIN;
+    p.revents = 0;
+    return poll(&p, 1, ms) > 0;
+}
+
 static int
 drain(int fd, struct netchan_conn *c)
 {
@@ -107,6 +124,7 @@ drain(int fd, struct netchan_conn *c)
     struct sockaddr_storage from;
     socklen_t fl = sizeof(from);
     int got = 0;
+    if (!wait_readable(fd, 50)) return 0;
     for (;;) {
         ssize_t n = recvfrom(fd, pkt, sizeof(pkt), MSG_DONTWAIT,
                              (struct sockaddr *)&from, &fl);
