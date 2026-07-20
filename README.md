@@ -47,9 +47,24 @@ either.
 | `third_party/` | vendored monocypher | — |
 | `tests/` | the test suite | — |
 | `examples/` | runnable programs, plus a vendored event loop they use | — |
+| `microchan/` | a second, incompatible library (see below) | — |
 
 Each layer builds without the ones above it. `src/` alone is a complete and
 useful library.
+
+## microchan
+
+[`microchan/`](microchan/README.md) is the same idea sized for a machine
+without a megabyte to spare: one allocation per connection and none after
+that, every buffer inside it fixed at compile time, Go-Back-N instead of
+selective ack, and a core that fits in a 16-bit large-model DOS binary next to
+a whole game. It runs over IPX on MS-DOS and over UDP on a host.
+
+It is a separate library, not a build option here. The wire formats differ,
+the APIs differ (`mc_*` against `netchan_*`), and `struct mc_addr` and
+`struct nc_addr` pack their bytes differently while meaning roughly the same
+thing. Nothing links both. What the two do share is the seam: a core that
+never names a socket.
 
 ## Build
 

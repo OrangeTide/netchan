@@ -63,6 +63,28 @@ jobs:
       - name: Build and test the core alone
         run: make -f Makefile.simple check
 
+  dos:
+    name: microchan 16-bit DOS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: open-watcom/setup-open-watcom@v1
+        with:
+          version: "2.0-64"
+
+      # mc_ipx.c and plat_dos.c are real-mode 16-bit and never see a host
+      # compiler, so this is the only thing that checks them at all.
+      - name: Build the DOS target
+        working-directory: microchan
+        run: wmake
+
+      - name: Check the executables came out
+        working-directory: microchan
+        run: |
+          ls -l _dos/mcdemo.exe _dos/ipxtest.exe _dos/thor.exe
+          file _dos/thor.exe | grep -q 'MS-DOS executable'
+
   wasm:
     name: wasm32
     runs-on: ubuntu-latest

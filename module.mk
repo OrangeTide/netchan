@@ -30,3 +30,7 @@ NETCHAN_EXAMPLES ?= 1
 ifeq ($(NETCHAN_EXAMPLES),1)
 SUBDIRS += examples
 endif
+
+# microchan is a second, incompatible library that shares this repository but
+# not a line of code. See microchan/README.md.
+SUBDIRS += microchan
