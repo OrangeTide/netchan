@@ -24,20 +24,6 @@ ROOT := $(dir $(lastword $(MAKEFILE_LIST)))
 # project-wide variable; everything else propagates through _LIBS.
 NETCHAN_SRC_INC := -I$(ROOT)src
 
-# modular-make defaults ARFLAGS to "rvD". The D asks for a deterministic
-# archive and is GNU binutils only; Apple's ar rejects it outright. The
-# archive rule sends stderr to /dev/null, so on a Mac the whole build stops
-# with a bare "Error 1" and no hint as to why.
-#
-# Probe for it once, with an empty archive so no compiler is involved, and
-# drop the flag when it is not understood. A command-line ARFLAGS still wins
-# over this, because the command line beats every makefile assignment.
-NETCHAN_AR_HAS_D := $(shell _d=$$(mktemp -d) && \
-    $(AR) rcD $$_d/probe.a >/dev/null 2>&1 && echo yes; rm -rf $$_d)
-ifneq ($(NETCHAN_AR_HAS_D),yes)
-ARFLAGS = rv
-endif
-
 SUBDIRS = third_party src transport crypto auth tests
 
 NETCHAN_EXAMPLES ?= 1
