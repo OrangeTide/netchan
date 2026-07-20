@@ -4,15 +4,26 @@ on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# A new push supersedes the one before it on the same branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pinned so a CI failure means the code changed, not the toolchain.
+  OW_RELEASE: 2026-07-13-Build
+
 jobs:
   build:
     name: ${{ matrix.os }} / ${{ matrix.cc }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -23,7 +34,7 @@ jobs:
           - os: macos-latest
             cc: gcc
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build
         run: make -j"$(getconf _NPROCESSORS_ONLN)" CC=${{ matrix.cc }}
@@ -34,29 +45,30 @@ jobs:
   sanitizers:
     name: asan + ubsan
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SAN_CFLAGS: -fsanitize=address,undefined -fno-omit-frame-pointer -g -O1
+      SAN_LDFLAGS: -fsanitize=address,undefined
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build
         run: |
           make -j"$(getconf _NPROCESSORS_ONLN)" \
-            CFLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g -O1" \
-            LDFLAGS="-fsanitize=address,undefined"
+            CFLAGS="$SAN_CFLAGS" LDFLAGS="$SAN_LDFLAGS"
 
       - name: Test
         env:
           ASAN_OPTIONS: detect_leaks=1
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
-        run: |
-          make run-tests \
-            CFLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g -O1" \
-            LDFLAGS="-fsanitize=address,undefined"
+        run: make run-tests CFLAGS="$SAN_CFLAGS" LDFLAGS="$SAN_LDFLAGS"
 
   vendorable:
     name: cc-only core build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # The point of Makefile.simple: prove the core still builds and passes
       # with nothing but a compiler and an -I per directory.
@@ -66,34 +78,64 @@ jobs:
   dos:
     name: microchan 16-bit DOS
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: open-watcom/setup-open-watcom@v1
+      # The snapshot is ~150 MB, so it is worth not fetching every run. The
+      # key is the pinned release tag: a new tag misses and re-downloads.
+      - name: Cache Open Watcom
+        id: ow-cache
+        uses: actions/cache@v6
         with:
-          version: "2.0-64"
+          path: ~/open-watcom
+          key: open-watcom-${{ env.OW_RELEASE }}
+
+      - name: Install Open Watcom
+        if: steps.ow-cache.outputs.cache-hit != 'true'
+        run: |
+          url=https://github.com/open-watcom/open-watcom-v2/releases/download
+          mkdir -p ~/open-watcom
+          curl -fsSL "$url/$OW_RELEASE/ow-snapshot.tar.xz" \
+            | tar -xJ -C ~/open-watcom
 
       # mc_ipx.c and plat_dos.c are real-mode 16-bit and never see a host
-      # compiler, so this is the only thing that checks them at all.
+      # compiler, so this job is the only thing that checks them at all.
       - name: Build the DOS target
         working-directory: microchan
-        run: wmake
+        run: |
+          export WATCOM="$HOME/open-watcom"
+          export PATH="$WATCOM/binl64:$PATH"
+          wmake
 
       - name: Check the executables came out
         working-directory: microchan
         run: |
           ls -l _dos/mcdemo.exe _dos/ipxtest.exe _dos/thor.exe
-          file _dos/thor.exe | grep -q 'MS-DOS executable'
+          for f in _dos/*.exe; do
+              file "$f" | grep -q 'MS-DOS executable' || {
+                  echo "$f is not a DOS executable"; exit 1; }
+          done
+
+      # There is no way to run these here, so keep them for someone with a
+      # DOSBox to hand.
+      - uses: actions/upload-artifact@v6
+        with:
+          name: microchan-dos
+          path: microchan/_dos/*.exe
+          retention-days: 14
 
   wasm:
     name: wasm32
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: mymindstorm/setup-emsdk@v14
+      - uses: mymindstorm/setup-emsdk@4528d102f7230f0e7b276855c01ea1159be0e984 # v16
 
       # Only the socketless layers compile here, which is the check that
-      # matters: the core must not have grown a dependency on a socket.
+      # matters: the core must not have quietly grown a dependency on a
+      # socket, an allocator quirk, or a 64-bit assumption.
       - name: Build
         run: make -j"$(getconf _NPROCESSORS_ONLN)" CC=emcc CXX=em++

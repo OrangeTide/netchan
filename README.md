@@ -192,8 +192,10 @@ build with `CC=emcc CXX=em++` to check. `nc_udp`, `nc_crypto`, and `auth/` drop
 out of a wasm build automatically, because a browser has no BSD sockets and
 its transports are already encrypted.
 
-`nc_crypto` and `keystore` draw randomness from the OS and currently expect
-`getrandom(2)` or `/dev/urandom`.
+`nc_crypto` and `keystore` draw randomness from the OS, picking a backend at
+compile time: `arc4random_buf` on macOS and the BSDs, `getrandom(2)` on Linux,
+and `/dev/urandom` for anything else or for a Linux kernel too old for the
+syscall. Linux and macOS are both built and tested in CI.
 
 ## Status
 

@@ -5,8 +5,33 @@
 #include "monocypher.h"
 #include <string.h>
 
-/* OS entropy: desktop only, so getrandom()/urandom is fine. */
-#include <sys/random.h>
+/*
+ * OS entropy. Three backends, because a library that expects to be copied
+ * into somebody else's tree does not get to choose the platform:
+ *
+ *   arc4random_buf   macOS and the BSDs. It cannot fail, so there is no
+ *                    error path here to get wrong.
+ *   getrandom(2)     Linux, glibc 2.25 and later. A short read is normal for
+ *                    a large request, so the loop is not optional.
+ *   /dev/urandom     everything else, and Linux kernels too old for the
+ *                    syscall, where getrandom fails with ENOSYS.
+ *
+ * auth/keystore.c carries the same three-way helper. The duplication is
+ * deliberate: the two layers are vendored independently, and neither should
+ * drag in the other for twenty lines of platform selection.
+ */
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || \
+    defined(__NetBSD__) || defined(__DragonFly__)
+#  define NC_RANDOM_ARC4 1
+#  include <stdlib.h>
+#else
+#  if defined(__linux__)
+#    define NC_RANDOM_GETRANDOM 1
+#    include <sys/random.h>
+#    include <errno.h>
+#  endif
+#  include <stdio.h>
+#endif
 
 /* Transcript labels. The session id uses its own label so publishing it
  * says nothing about either directional key. */
@@ -19,14 +44,37 @@ static const uint8_t zero32[32];
 static int
 fill_random(uint8_t *buf, size_t n)
 {
+#if defined(NC_RANDOM_ARC4)
+    arc4random_buf(buf, n);
+    return 0;
+#else
+    FILE *f;
+    size_t got;
+
+#  if defined(NC_RANDOM_GETRANDOM)
     size_t off = 0;
+
     while (off < n) {
         ssize_t r = getrandom(buf + off, n - off, 0);
-        if (r < 0)
-            return -1;
+
+        if (r < 0) {
+            if (errno == EINTR)
+                continue;
+            break;              /* ENOSYS on an old kernel: use the file */
+        }
         off += (size_t)r;
     }
-    return 0;
+    if (off == n)
+        return 0;
+#  endif
+
+    f = fopen("/dev/urandom", "rb");
+    if (!f)
+        return -1;
+    got = fread(buf, 1, n, f);
+    fclose(f);
+    return got == n ? 0 : -1;
+#endif
 }
 
 static void
