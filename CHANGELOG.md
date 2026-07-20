@@ -8,6 +8,11 @@ handshake that never completes, not as a subtle failure later.
 
 ### Fixed
 
+- The build passed `ar rvD`, whose `D` flag is GNU binutils only, so linking
+  any archive failed on macOS. The top-level `module.mk` now probes for the
+  flag and drops it when the archiver does not understand it. This is a
+  workaround for a modular-make default, not a netchan bug, and it belongs
+  upstream.
 - `nc_crypto` and `keystore` called `getrandom(2)` unconditionally, so
   neither compiled anywhere but Linux. Both now select a backend at compile
   time: `arc4random_buf` on macOS and the BSDs, `getrandom(2)` on Linux with
