@@ -95,7 +95,7 @@ depended on, for the same reason netchan expects to be vendored itself.
 
 ### modular-make (`GNUmakefile`)
 
-- **Version:** 1.8.0
+- **Version:** 1.8.5
 - **What it is:** a modular multi-target build driver. The `module.mk` files
   throughout the tree are its input.
 - **Why vendored:** so a bare checkout builds with nothing but GNU make 4.0

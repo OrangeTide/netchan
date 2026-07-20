@@ -8,11 +8,12 @@ handshake that never completes, not as a subtle failure later.
 
 ### Fixed
 
-- The build passed `ar rvD`, whose `D` flag is GNU binutils only, so linking
-  any archive failed on macOS. The top-level `module.mk` now probes for the
-  flag and drops it when the archiver does not understand it. This is a
-  workaround for a modular-make default, not a netchan bug, and it belongs
-  upstream.
+- The build passed `ar rvD`, whose `D` flag is GNU binutils only, so building
+  any archive failed on macOS, and with the archiver's stderr discarded it
+  failed with no message. Fixed upstream in modular-make 1.8.5, which probes
+  for the flag, adds `c` so the archiver is silent unless something is wrong,
+  and no longer discards its stderr. The vendored `GNUmakefile` moves from
+  1.8.0 to 1.8.5.
 - `nc_crypto` and `keystore` called `getrandom(2)` unconditionally, so
   neither compiled anywhere but Linux. Both now select a backend at compile
   time: `arc4random_buf` on macOS and the BSDs, `getrandom(2)` on Linux with
@@ -22,9 +23,10 @@ handshake that never completes, not as a subtle failure later.
 
 ### Added
 
-- `microchan/`, a second library: the same idea with every buffer fixed at
-  compile time, no `malloc`, Go-Back-N over an 8-message window instead of
-  selective ack, and a core that fits in a 16-bit large-model DOS binary.
+- `microchan/`, a second library: the same idea with one allocation per
+  connection and none after it, every buffer inside it fixed at compile time,
+  Go-Back-N over an 8-message window instead of selective ack, and a core that
+  fits in a 16-bit large-model DOS binary.
   Transports are IPX for MS-DOS and UDP for a host. It brings its own tests,
   the four-player `thor` game the variant exists for, and an Open Watcom
   `makefile` for the DOS target.

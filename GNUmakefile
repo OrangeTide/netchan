@@ -1,4 +1,4 @@
-# modular-make -- A modular GNUmakefile for C, C++, D, Fortran, Objective-C, Objective-C++, Pascal, Modula-2, and Assembly projects [v1.8.0]
+# modular-make -- A modular GNUmakefile for C, C++, D, Fortran, Objective-C, Objective-C++, Pascal, Modula-2, and Assembly projects [v1.8.5]
 # updated: 20 Jul 2026
 # Requires GNU Make 3.81 or later.  compile_commands.json needs the $(file)
 # function (GNU Make 4.0); it is skipped on 3.81.
@@ -57,7 +57,11 @@
 # installable outputs.
 #
 # The triplet (e.g. x86_64-linux-gnu) is obtained from $(CC) -dumpmachine
-# so that cross-compiled artifacts do not clobber native ones.
+# so that cross-compiled artifacts do not clobber native ones.  Set
+# TARGET_TRIPLET in .env or on the command line to override it, which is
+# needed when two toolchains report the same triplet.  A musl cross-compiler
+# reports its glibc counterpart's triplet, so without an override the two
+# builds share a directory and silently reuse each other's objects.
 #
 # A build variant adds one more path component under the triplet, so
 # objects compiled with different flags never share a path and Make
@@ -493,7 +497,8 @@
 #   FPC         Free Pascal compiler               (default: fpc)
 #   GM2         GCC Modula-2 frontend              (default: gm2)
 #   AR          Archiver                           (default: ar)
-#   ARFLAGS     Archiver flags                     (default: rvD)
+#   ARFLAGS     Archiver flags                     (default: rvc, plus D
+#               when the archiver supports deterministic archives)
 #   MKDIR_P     Directory creation command          (default: mkdir -p)
 #   RMDIR       Directory removal command           (default: rmdir)
 #   V           Verbose output.  V=1 prints full command lines.
@@ -537,11 +542,34 @@
 # links a test program to verify the full toolchain supports it.
 # Uses -flto=thin with Clang and -flto=auto with GCC.
 #
-# Per-target CFLAGS, CXXFLAGS, CPPFLAGS, LDFLAGS, LDLIBS, and other
-# language-specific flags are set via target-specific variables and do
-# not inherit the global values.  This is intentional -- it keeps each
-# target's flags self-contained and avoids surprising flag leakage
-# between unrelated targets.
+# Compiler and linker flags come from three places.  The user tier is
+# CFLAGS, CXXFLAGS, CPPFLAGS, LDFLAGS, LDLIBS and the other standard
+# names, set in .env, the environment, or on the command line by whoever
+# runs the build.  The project tier is PROJECT_CFLAGS, PROJECT_LDFLAGS
+# and the other PROJECT_* variables, set in a top-level module.mk.  The
+# per-target tier is <name>_CFLAGS, <name>_LDFLAGS and the rest, set in
+# the target's own module.mk.
+#
+# They reach the compiler in that order: build mode flags (DEBUG,
+# RELEASE, SANITIZE) first, then PROJECT_*, then the user's, then the
+# target's own, then whatever its dependencies export.  Where a compiler
+# honours the last occurrence of an option, later ones win, so a
+# <name>_CFLAGS of -O0 overrides a project-wide -O2.
+#
+# This makefile never sets the user tier.  Project-wide flags belong in
+# the PROJECT_* variables, which leaves CFLAGS and LDFLAGS free for the
+# person building the project.  A CFLAGS=-O3 or LDFLAGS=-static in .env
+# reaches every target.  The command line behaves differently: GNU Make
+# gives command-line variables priority over every assignment in a
+# makefile, so "make LDFLAGS=-static" replaces the per-target _LDFLAGS
+# instead of adding to it.
+#
+# A per-target value never reaches another target.  Flags travel from a
+# library to the targets that use it through the _EXPORTED_* variables,
+# and only through those.  Nothing travels the other way: an
+# executable's private LDFLAGS do not follow the link into the shared
+# libraries it depends on, so a shared library builds identically
+# whether the build was entered through "make mylib" or "make myapp".
 #
 # Optional build configuration is loaded from $(CONFIGDIR)/config.mk,
 # auto-created from ./defconfig on first build (or via 'make defconfig').
@@ -583,7 +611,10 @@ ifneq ($(V),1)
     _c_rst  := \033[0m
   endif
   _Q := @
-  _ar_redir := >/dev/null 2>&1
+  # stdout only.  The "v" in ARFLAGS lists each member added, which is noise
+  # in a quiet build, but stderr is where the archiver reports a failure, and
+  # swallowing that turns a broken toolchain into a bare "Error 1".
+  _ar_redir := >/dev/null
   _fpc_redir := >/dev/null
   _quiet.cc     = @printf '  $(_c_tag)%-8s$(_c_rst) %s\n' 'CC' '$<';
   _quiet.cxx    = @printf '  $(_c_tag)%-8s$(_c_rst) %s\n' 'CXX' '$<';
@@ -615,7 +646,25 @@ endif
 
 MKDIR_P ?= mkdir -p
 RMDIR   ?= rmdir
-ARFLAGS  = rvD
+
+# Make's built-in default for ARFLAGS is "rv".  Only that counts as nobody
+# having chosen: a value from .env, the environment, or the command line is
+# the user's and is left alone.  A plain "=" here beat both .env and the
+# environment, which is not what CUSTOMIZATION above promises.
+ifeq ($(origin ARFLAGS),default)
+  # c  Do not warn when the archive has to be created.  The rule always
+  #    creates one, so without this every archive writes a line to stderr,
+  #    and the only way to hide that is to hide real errors along with it.
+  # D  Deterministic archives: zero timestamps, uids, and gids.  GNU binutils
+  #    only -- Apple's ar rejects it outright -- so ask the archiver instead
+  #    of assuming.  An empty archive answers the question, so no compiler is
+  #    involved.  := inside the guard runs the probe once rather than on
+  #    every expansion.
+  _ar_D := $(shell _d=$$(mktemp -d 2>/dev/null) && [ -n "$$_d" ] && { \
+	$(AR) rcD $$_d/probe.a >/dev/null 2>&1 && printf D; rm -rf $$_d; })
+  ARFLAGS := rvc$(_ar_D)
+endif
+
 # Override Make's built-in FC=f77 default, but respect user/env overrides
 ifeq ($(origin FC),default)
   FC := gfortran
@@ -627,7 +676,17 @@ GM2     ?= gm2
 
 # Detect the compiler's target triplet early so platform guards in the
 # RELEASE block and module.mk files can reference it.
+#
+# Overridable from .env or the command line, because -dumpmachine does not
+# always identify a toolchain uniquely.  A musl cross-compiler reports the
+# same triplet as its glibc counterpart (arm-linux-musleabihf-gcc reports
+# arm-linux-gnueabihf), so without an override both would share one build
+# directory and silently reuse each other's objects.  Set TARGET_TRIPLET to
+# separate them.  Guarded with ifndef rather than ?= so the probe stays
+# immediate and runs at most once.
+ifndef TARGET_TRIPLET
 TARGET_TRIPLET := $(shell $(CC) -dumpmachine 2>/dev/null)
+endif
 
 # Cross-toolchain prefix derived from $(CC) so OBJCOPY/STRIP match the target.
 # e.g. CC=aarch64-linux-gnu-gcc -> aarch64-linux-gnu-objcopy.  Empty for native.
@@ -902,7 +961,17 @@ endif
 
 ### Build Configuration (CONFIG_* options) ###
 
-ifneq ($(MAKECMDGOALS),clean-all)
+# An existing config.mk is always read, clean goals included.  A clean that
+# cannot see CONFIG_* gated sources does not know their objects exist and
+# leaves them behind, so the next build links stale objects from a
+# configuration that is no longer selected.
+#
+# When config.mk does not exist, the bare include is what bootstraps it: make
+# builds it through the auto-create rule below and restarts.  Skip that for
+# clean-only goals, which would create a config just to delete it again.
+ifneq ($(wildcard $(CONFIGDIR)/config.mk),)
+include $(CONFIGDIR)/config.mk
+else ifneq ($(filter-out clean clean-all clean_%,$(or $(MAKECMDGOALS),all)),)
 include $(CONFIGDIR)/config.mk
 endif
 
@@ -1134,21 +1203,38 @@ show-% :
 %/ : ; $(_Q)$(MKDIR_P) $@
 .PRECIOUS : %/
 
+# Snapshot the user's link flags before any target-specific assignment can
+# shadow them.  The link rules below cannot write "LDFLAGS += ..." the way the
+# compile rules do.  Target-specific values are inherited by prerequisites, and
+# a shared library is a prerequisite of every executable that links it, so a +=
+# there would append the executable's private flags to the library's own link
+# line.  That leaks flags between unrelated targets and makes the library's
+# contents depend on which target the build was entered through.  Referencing
+# the snapshot instead pulls in the user's value without inheriting the parent
+# target's.  The := is required: a recursive USER_LDFLAGS = $(LDFLAGS) would
+# resolve back to the target-specific LDFLAGS and recurse forever.
+#
+# The compile flags need no snapshot.  They are only ever set on object files,
+# which no other target-specific assignment covers, so += there appends to the
+# global value and nothing else.
+USER_LDFLAGS := $(LDFLAGS)
+USER_LDLIBS  := $(LDLIBS)
+
 # Per-library rules: compile objects and pack into a static archive.
 define library_rules
 $1 : $(call get_lib,$1)
 $(call get_lib,$1) : $$(call get_all_objs,$1) $$($1_EXTRA_OBJS) $(foreach d,$($1_LIBS),$(call get_lib_file,$d)) | $$(@D)/
 	$$(link.a)
-$(call get_all_objs,$1) : CFLAGS=$$($1_CFLAGS) $(call get_exported_cflags,$1)
-$(call get_all_objs,$1) : CXXFLAGS=$$($1_CXXFLAGS) $(call get_exported_cxxflags,$1)
-$(call get_all_objs,$1) : CPPFLAGS=$$($1_CPPFLAGS) $(call get_exported_cppflags,$1) $(call get_pkgs_cflags,$1) $(call get_gen_hdr_incs,$1)
+$(call get_all_objs,$1) : CFLAGS += $$($1_CFLAGS) $(call get_exported_cflags,$1)
+$(call get_all_objs,$1) : CXXFLAGS += $$($1_CXXFLAGS) $(call get_exported_cxxflags,$1)
+$(call get_all_objs,$1) : CPPFLAGS += $$($1_CPPFLAGS) $(call get_exported_cppflags,$1) $(call get_pkgs_cflags,$1) $(call get_gen_hdr_incs,$1)
 $(if $(call get_all_gen_hdrs,$1),$(call get_all_objs,$1) : | $(call get_all_gen_hdrs,$1))
-$(call get_all_objs,$1) : DFLAGS=$$($1_DFLAGS)
-$(call get_all_objs,$1) : FFLAGS=$$($1_FFLAGS)
-$(call get_all_objs,$1) : ASFLAGS=$$($1_ASFLAGS)
-$(call get_all_objs,$1) : NASMFLAGS=$$($1_NASMFLAGS)
-$(call get_all_objs,$1) : FPCFLAGS=$$($1_FPCFLAGS)
-$(call get_all_objs,$1) : GM2FLAGS=$$($1_GM2FLAGS)
+$(call get_all_objs,$1) : DFLAGS += $$($1_DFLAGS)
+$(call get_all_objs,$1) : FFLAGS += $$($1_FFLAGS)
+$(call get_all_objs,$1) : ASFLAGS += $$($1_ASFLAGS)
+$(call get_all_objs,$1) : NASMFLAGS += $$($1_NASMFLAGS)
+$(call get_all_objs,$1) : FPCFLAGS += $$($1_FPCFLAGS)
+$(call get_all_objs,$1) : GM2FLAGS += $$($1_GM2FLAGS)
 clean_$1 :
 	$$(RM) $$(call get_all_objs,$1) $$(patsubst %.o,%.dep,$$(call get_all_objs,$1)) $$(patsubst %.o,%.cmd.json,$$(call get_all_objs,$1)) $$(call get_side_effects,$1) $$(call get_gen_srcs,$1) $$(call get_gen_hdrs,$1)
 	$$(RM) $(call get_lib,$1)
@@ -1161,18 +1247,18 @@ $1 : $(call get_so,$1)
 $(call get_so,$1) : $$(call get_all_objs,$1) $$($1_EXTRA_OBJS) $(foreach d,$($1_LIBS),$(call get_lib_file,$d)) | $$(@D)/
 	$$(link.so)
 $(call get_so,$1) : CXX_MODE=$(if $(call needs_cxx,$1),1)
-$(call get_so,$1) : LDFLAGS=$$($1_LDFLAGS) $(call get_exported_ldflags,$1)
-$(call get_so,$1) : LDLIBS=$$($1_LDLIBS) $(call get_exported_ldlibs,$1) $(call get_pkgs_ldlibs,$1)
-$(call get_all_objs,$1) : CFLAGS=-fPIC $$($1_CFLAGS) $(call get_exported_cflags,$1)
-$(call get_all_objs,$1) : CXXFLAGS=-fPIC $$($1_CXXFLAGS) $(call get_exported_cxxflags,$1)
-$(call get_all_objs,$1) : CPPFLAGS=$$($1_CPPFLAGS) $(call get_exported_cppflags,$1) $(call get_pkgs_cflags,$1) $(call get_gen_hdr_incs,$1)
+$(call get_so,$1) : LDFLAGS = $$(USER_LDFLAGS) $$($1_LDFLAGS) $(call get_exported_ldflags,$1)
+$(call get_so,$1) : LDLIBS = $$(USER_LDLIBS) $$($1_LDLIBS) $(call get_exported_ldlibs,$1) $(call get_pkgs_ldlibs,$1)
+$(call get_all_objs,$1) : CFLAGS += -fPIC $$($1_CFLAGS) $(call get_exported_cflags,$1)
+$(call get_all_objs,$1) : CXXFLAGS += -fPIC $$($1_CXXFLAGS) $(call get_exported_cxxflags,$1)
+$(call get_all_objs,$1) : CPPFLAGS += $$($1_CPPFLAGS) $(call get_exported_cppflags,$1) $(call get_pkgs_cflags,$1) $(call get_gen_hdr_incs,$1)
 $(if $(call get_all_gen_hdrs,$1),$(call get_all_objs,$1) : | $(call get_all_gen_hdrs,$1))
-$(call get_all_objs,$1) : DFLAGS=-fPIC $$($1_DFLAGS)
-$(call get_all_objs,$1) : FFLAGS=-fPIC $$($1_FFLAGS)
-$(call get_all_objs,$1) : ASFLAGS=-fPIC $$($1_ASFLAGS)
-$(call get_all_objs,$1) : NASMFLAGS=$$($1_NASMFLAGS)
-$(call get_all_objs,$1) : FPCFLAGS=-Cg $$($1_FPCFLAGS)
-$(call get_all_objs,$1) : GM2FLAGS=-fPIC $$($1_GM2FLAGS)
+$(call get_all_objs,$1) : DFLAGS += -fPIC $$($1_DFLAGS)
+$(call get_all_objs,$1) : FFLAGS += -fPIC $$($1_FFLAGS)
+$(call get_all_objs,$1) : ASFLAGS += -fPIC $$($1_ASFLAGS)
+$(call get_all_objs,$1) : NASMFLAGS += $$($1_NASMFLAGS)
+$(call get_all_objs,$1) : FPCFLAGS += -Cg $$($1_FPCFLAGS)
+$(call get_all_objs,$1) : GM2FLAGS += -fPIC $$($1_GM2FLAGS)
 clean_$1 :
 	$$(RM) $$(call get_all_objs,$1) $$(patsubst %.o,%.dep,$$(call get_all_objs,$1)) $$(patsubst %.o,%.cmd.json,$$(call get_all_objs,$1)) $$(call get_side_effects,$1) $$(call get_gen_srcs,$1) $$(call get_gen_hdrs,$1)
 	$$(RM) $(call get_so,$1)
@@ -1191,18 +1277,18 @@ $(BINDIR)/$1$(EXTENSION.exe) : $$(call get_all_objs,$1) $$($1_EXTRA_OBJS) $(fore
 	$$(link.c)
 	$$(_split_debug)
 $(BINDIR)/$1$(EXTENSION.exe) : CXX_MODE=$(if $(call needs_cxx,$1),1)
-$(BINDIR)/$1$(EXTENSION.exe) : LDFLAGS=$$($1_LDFLAGS) $(call get_exported_ldflags,$1)
-$(BINDIR)/$1$(EXTENSION.exe) : LDLIBS=$$($1_LDLIBS) $(call get_exported_ldlibs,$1) $(call get_pkgs_ldlibs,$1)
-$(call get_all_objs,$1) : CFLAGS=$$($1_CFLAGS) $(call get_exported_cflags,$1)
-$(call get_all_objs,$1) : CXXFLAGS=$$($1_CXXFLAGS) $(call get_exported_cxxflags,$1)
-$(call get_all_objs,$1) : CPPFLAGS=$$($1_CPPFLAGS) $(call get_exported_cppflags,$1) $(call get_pkgs_cflags,$1) $(call get_gen_hdr_incs,$1)
+$(BINDIR)/$1$(EXTENSION.exe) : LDFLAGS = $$(USER_LDFLAGS) $$($1_LDFLAGS) $(call get_exported_ldflags,$1)
+$(BINDIR)/$1$(EXTENSION.exe) : LDLIBS = $$(USER_LDLIBS) $$($1_LDLIBS) $(call get_exported_ldlibs,$1) $(call get_pkgs_ldlibs,$1)
+$(call get_all_objs,$1) : CFLAGS += $$($1_CFLAGS) $(call get_exported_cflags,$1)
+$(call get_all_objs,$1) : CXXFLAGS += $$($1_CXXFLAGS) $(call get_exported_cxxflags,$1)
+$(call get_all_objs,$1) : CPPFLAGS += $$($1_CPPFLAGS) $(call get_exported_cppflags,$1) $(call get_pkgs_cflags,$1) $(call get_gen_hdr_incs,$1)
 $(if $(call get_all_gen_hdrs,$1),$(call get_all_objs,$1) : | $(call get_all_gen_hdrs,$1))
-$(call get_all_objs,$1) : DFLAGS=$$($1_DFLAGS)
-$(call get_all_objs,$1) : FFLAGS=$$($1_FFLAGS)
-$(call get_all_objs,$1) : ASFLAGS=$$($1_ASFLAGS)
-$(call get_all_objs,$1) : NASMFLAGS=$$($1_NASMFLAGS)
-$(call get_all_objs,$1) : FPCFLAGS=$$($1_FPCFLAGS)
-$(call get_all_objs,$1) : GM2FLAGS=$$($1_GM2FLAGS)
+$(call get_all_objs,$1) : DFLAGS += $$($1_DFLAGS)
+$(call get_all_objs,$1) : FFLAGS += $$($1_FFLAGS)
+$(call get_all_objs,$1) : ASFLAGS += $$($1_ASFLAGS)
+$(call get_all_objs,$1) : NASMFLAGS += $$($1_NASMFLAGS)
+$(call get_all_objs,$1) : FPCFLAGS += $$($1_FPCFLAGS)
+$(call get_all_objs,$1) : GM2FLAGS += $$($1_GM2FLAGS)
 clean_$1 :
 	$$(RM) $$(call get_all_objs,$1) $$(patsubst %.o,%.dep,$$(call get_all_objs,$1)) $$(patsubst %.o,%.cmd.json,$$(call get_all_objs,$1)) $$(call get_side_effects,$1) $$(call get_gen_srcs,$1) $$(call get_gen_hdrs,$1)
 	$$(RM) $(BINDIR)/$1$(EXTENSION.exe) $(BINDIR)/$1$(EXTENSION.exe).debug$(if $(findstring emscripten,$(TARGET_TRIPLET)), $(BINDIR)/$1.js $(BINDIR)/$1.wasm $(BINDIR)/$1.data)
