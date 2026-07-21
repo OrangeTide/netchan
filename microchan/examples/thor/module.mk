@@ -11,7 +11,7 @@
 #
 #   thor          host-and-join over UDP; pass 's' to host
 #   test_game     headless simulation check, prints ASCII frames
-#   test_gnet     the game's wire protocol over UDP loopback
+#   test_gnet     the game's wire protocol over an in-memory link
 
 ROOT := $(dir $(lastword $(MAKEFILE_LIST)))
 
@@ -48,7 +48,7 @@ TEST_TARGETS += test_game
 EXECUTABLES += test_gnet
 test_gnet_DIR := $(ROOT)
 test_gnet_SRCS = test_gnet.c
-test_gnet_LIBS = thor_net thor_game microchan_core mc_udp
+test_gnet_LIBS = thor_net thor_game microchan_core mc_memlink
 define test_gnet_TESTCMD
 $(test_gnet_RUN)
 endef

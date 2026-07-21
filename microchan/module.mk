@@ -13,7 +13,7 @@
 #
 #   src/         the core, no socket headers
 #   transport/   mc_udp for the host, mc_ipx for 16-bit DOS
-#   tests/       host loopback tests over UDP
+#   tests/       core protocol tests over an in-memory link, plus mc_udp
 #   examples/    a smoke test and the four-player game the variant exists for
 #
 # The DOS target is built by Open Watcom from ../microchan/makefile, not from
