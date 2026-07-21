@@ -82,6 +82,44 @@ jobs:
       - name: Build and test the core alone
         run: make -f Makefile.simple check
 
+  windows:
+    name: windows cross + wine
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Everything that does not open a socket or a terminal. The rest of the
+      # tree is POSIX on purpose: the examples, the iox event loop, and the
+      # two UDP transports.
+      WIN_TARGETS: >-
+        netchan_test nc_crypto_test test_keystore test_nc_auth nc_ws_test
+        test_microchan test_gnet test_game mcdemo
+    steps:
+      - uses: actions/checkout@v6
+
+      # Cross-compiling catches the compile errors, and wine runs the result,
+      # which is what actually proves BCryptGenRandom and rand_s work rather
+      # than merely link. A native runner would test MSVC too, but nothing
+      # here is MSVC-specific and this costs a fraction of the time.
+      - name: Install mingw-w64 and wine
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-mingw-w64-x86-64 wine
+
+      - name: Build for Windows
+        run: |
+          make -j"$(getconf _NPROCESSORS_ONLN)" \
+            CC=x86_64-w64-mingw32-gcc TARGET_TRIPLET=x86_64-w64-mingw32 \
+            $WIN_TARGETS
+
+      - name: Run the Windows binaries
+        run: |
+          cd _out/x86_64-w64-mingw32/bin
+          for t in $WIN_TARGETS; do
+            echo "=== $t"
+            WINEDEBUG=-all wine ./$t.exe || exit 1
+          done
+
   dos:
     name: microchan 16-bit DOS
     runs-on: ubuntu-latest
