@@ -1456,6 +1456,12 @@ netchan_chan_type(struct netchan_chan *ch)
     return ch->type;
 }
 
+const char *
+netchan_chan_content_type(struct netchan_chan *ch)
+{
+    return ch->content_type;
+}
+
 int
 netchan_chan_state(struct netchan_chan *ch)
 {

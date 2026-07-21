@@ -136,6 +136,11 @@ struct netchan_chan *netchan_chan_open(struct netchan_conn *c,
 void netchan_chan_close(struct netchan_chan *ch);
 int netchan_chan_id(struct netchan_chan *ch);
 int netchan_chan_type(struct netchan_chan *ch);
+/** The channel's content-type string, as given to netchan_chan_open() or as
+ * carried in the peer's OPEN. Use it to tell apart channels that share a
+ * netchan type, e.g. two reliable streams named "control" and "events".
+ * Never NULL: a channel opened without one reads back as "". */
+const char *netchan_chan_content_type(struct netchan_chan *ch);
 int netchan_chan_state(struct netchan_chan *ch);
 
 /** Queue a datagram or stream bytes for sending. Returns bytes queued. */
