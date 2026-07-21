@@ -20,6 +20,12 @@ handshake that never completes, not as a subtle failure later.
   a retry on `EINTR`, and `/dev/urandom` otherwise, which also covers a Linux
   kernel too old for the syscall. macOS is now built and tested in CI, which
   is how this was found.
+- `nc_random_id()` fell back to an unseeded `rand()` whenever it could not
+  read `/dev/urandom`, so every process produced the identical sequence of
+  connection ids. That was the normal path on Windows, where the file does not
+  exist, and reachable anywhere `/dev` is missing. It now asks the platform
+  for real entropy, and the last-resort path mixes the clock with a stack
+  address instead of calling `rand()` at all.
 - Three tests read from a loopback socket without ever waiting and treated an
   empty queue as no traffic. Linux queues a loopback datagram inside
   `sendto()`, so the read always found it; macOS delivers through a separate
@@ -30,6 +36,24 @@ handshake that never completes, not as a subtle failure later.
 
 ### Added
 
+- Windows support for the library. The core takes its monotonic clock from
+  `GetTickCount64` and its connection ids from `rand_s`; `nc_crypto` and
+  `keystore` take entropy from `BCryptGenRandom`; `nc_udp.h` includes winsock2
+  instead of `<sys/socket.h>`. `crypto/` and `auth/` need `-lbcrypt`, which
+  the build now exports to their dependents. The core needs nothing on the
+  link line, which is why it uses `rand_s` rather than the same call: a
+  vendored `src/` still builds with nothing but a compiler.
+
+  The examples are unchanged and remain POSIX. They own sockets, an event
+  loop, and a terminal.
+- A CI job that cross-compiles for Windows with mingw-w64 and runs every
+  socket-free test binary under wine, so the entropy and clock backends are
+  executed rather than merely linked. Without it this would rot unnoticed,
+  which is exactly what happened to macOS.
+- `netchan_chan_content_type()`, the accessor for the string given to
+  `netchan_chan_open()` or carried in the peer's OPEN. It tells apart channels
+  that share a netchan type, such as two reliable streams named "control" and
+  "events". Never NULL; a channel opened without one reads back as "".
 - `microchan/tests/mc_memlink`, an in-memory datagram link for tests:
   delivery is a function call, and loss, duplication, and reordering happen on
   a fixed count. `test_microchan` gains a check that the Go-Back-N window

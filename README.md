@@ -182,10 +182,30 @@ generating a key, enrolling it, and watching the host-key warning fire.
 
 ## Portability
 
-C11 plus two POSIX calls in the core: `clock_gettime(CLOCK_MONOTONIC)` for its
-timers, and a read of `/dev/urandom` to pick a connection id. Build with
+C11 and the C library. The core needs a monotonic clock and a source of
+randomness for its connection ids, and it takes both from whichever platform
+it is compiled for: `clock_gettime(CLOCK_MONOTONIC)` and `/dev/urandom` on
+POSIX, `GetTickCount64` and `rand_s` on Windows. Build with
 `-D_POSIX_C_SOURCE=200809L` under strict `-std=c11`. Nothing else in `src/`
-reaches past the C library.
+reaches past the C library, and nothing in it needs a library on the link
+line.
+
+Linux, macOS, and Windows are all built in CI, and the wasm and 16-bit DOS
+targets are built there too. The Windows job cross-compiles with mingw-w64
+and runs the result under wine.
+
+| Layer | POSIX | Windows | wasm |
+| --- | --- | --- | --- |
+| `src/` core | yes | yes | yes |
+| `transport/nc_ws` | yes | yes | yes |
+| `transport/nc_udp` | yes | yes, address packing only | no |
+| `crypto/`, `auth/` | yes | yes | no |
+| `microchan/` core | yes | yes | no |
+| `examples/`, `microchan/transport/mc_udp` | yes | no | no |
+
+The examples own real sockets, an event loop, and a terminal, so they are
+POSIX and are meant to be. Porting them is a bigger job than porting the
+library, and the library is the part that gets vendored.
 
 `src/`, `transport/nc_ws.c`, and their tests compile to WebAssembly unchanged;
 build with `CC=emcc CXX=em++` to check. `nc_udp`, `nc_crypto`, and `auth/` drop
@@ -193,9 +213,18 @@ out of a wasm build automatically, because a browser has no BSD sockets and
 its transports are already encrypted.
 
 `nc_crypto` and `keystore` draw randomness from the OS, picking a backend at
-compile time: `arc4random_buf` on macOS and the BSDs, `getrandom(2)` on Linux,
-and `/dev/urandom` for anything else or for a Linux kernel too old for the
-syscall. Linux and macOS are both built and tested in CI.
+compile time: `BCryptGenRandom` on Windows, `arc4random_buf` on macOS and the
+BSDs, `getrandom(2)` on Linux, and `/dev/urandom` for anything else or for a
+Linux kernel too old for the syscall. The Windows backend is the one case that
+needs something on the link line, `-lbcrypt`, which the build adds for
+dependents automatically. The core deliberately does not use it, which is what
+keeps a vendored `src/` free of link-line dependencies.
+
+On Windows, `auth/keystore` differs in two ways. The 0600 it asks for on its
+key files is ignored, since permissions are ACLs, so a key file inherits
+whatever its directory grants. Its files are also opened in text mode, so
+lines are stored with CRLF. Every format is line-oriented hex and round-trips
+either way, and files written on one platform read on the other.
 
 ## Status
 
