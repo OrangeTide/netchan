@@ -650,6 +650,149 @@ test_stats(void)
     PASS();
 }
 
+/*
+ * The read-only accessors. They look trivial enough to skip, which is the
+ * reason to test them: they are the only way an application sees a channel
+ * it did not open itself, and a receiver learns a channel's content type
+ * from the peer's OPEN rather than from its own call.
+ */
+static void
+test_accessors(void)
+{
+    TEST(accessors);
+
+    struct netchan_conn *client = netchan_open(0);
+    struct netchan_conn *server = netchan_open(1);
+    CHECK(client && server, "alloc failed");
+
+    struct nc_addr caddr = make_addr(0x7f000001, 10011);
+    struct nc_addr saddr = make_addr(0x7f000001, 20011);
+
+    CHECK(netchan_state(client) == NETCHAN_STATE_NEW, "fresh conn is not NEW");
+
+    netchan_connect(client, &saddr);
+    pump(client, server, &caddr);
+    netchan_accept(server);
+    pump(server, client, &saddr);
+    CHECK(netchan_state(client) == NETCHAN_STATE_CONNECTED, "not connected");
+
+    /* Ids are drawn per connection, so two ends must not collide. */
+    CHECK(netchan_id(client) != 0, "client connection id is zero");
+    CHECK(netchan_id(server) != 0, "server connection id is zero");
+    CHECK(netchan_id(client) != netchan_id(server), "both ends share an id");
+
+    struct netchan_event ev;
+    while (netchan_poll(client, &ev)) {}
+    while (netchan_poll(server, &ev)) {}
+
+    /* Two channels alike in every way but their content type: the case the
+     * content-type accessor exists for. */
+    struct netchan_chan *ctrl = netchan_chan_open(client, NETCHAN_RELIABLE,
+                                                 NETCHAN_DIR_SEND, "control");
+    struct netchan_chan *evts = netchan_chan_open(client, NETCHAN_RELIABLE,
+                                                  NETCHAN_DIR_SEND, "events");
+    struct netchan_chan *anon = netchan_chan_open(client, NETCHAN_UNRELIABLE,
+                                                  NETCHAN_DIR_SEND, NULL);
+    CHECK(ctrl && evts && anon, "chan_open failed");
+
+    CHECK(netchan_chan_id(ctrl) != netchan_chan_id(evts), "channels share an id");
+    CHECK(netchan_chan_type(ctrl) == NETCHAN_RELIABLE, "wrong channel type");
+    CHECK(netchan_chan_type(anon) == NETCHAN_UNRELIABLE, "wrong channel type");
+    CHECK(strcmp(netchan_chan_content_type(ctrl), "control") == 0,
+          "content type not readable on the opener");
+    CHECK(strcmp(netchan_chan_content_type(evts), "events") == 0,
+          "content type not readable on the opener");
+
+    /* Documented: never NULL, and empty when the channel was opened without
+     * one. An application may dereference it without checking. */
+    CHECK(netchan_chan_content_type(anon) != NULL, "content type is NULL");
+    CHECK(netchan_chan_content_type(anon)[0] == '\0',
+          "absent content type is not empty");
+
+    pump_both(client, server, &caddr, &saddr);
+
+    /* The receiving side never called chan_open, so everything it knows
+     * about these channels arrived on the wire. */
+    struct netchan_chan *s_ctrl = NULL, *s_evts = NULL, *s_anon = NULL;
+    while (netchan_poll(server, &ev)) {
+        if (ev.type != NETCHAN_EV_CHAN_OPEN || !ev.ch)
+            continue;
+        const char *ct = netchan_chan_content_type(ev.ch);
+        CHECK(ct != NULL, "peer-side content type is NULL");
+        if (strcmp(ct, "control") == 0) s_ctrl = ev.ch;
+        else if (strcmp(ct, "events") == 0) s_evts = ev.ch;
+        else if (ct[0] == '\0') s_anon = ev.ch;
+    }
+    CHECK(s_ctrl != NULL, "peer did not learn the control content type");
+    CHECK(s_evts != NULL, "peer did not learn the events content type");
+    CHECK(s_anon != NULL, "peer did not see the channel with no content type");
+
+    CHECK(netchan_chan_id(s_ctrl) == netchan_chan_id(ctrl),
+          "channel id differs across the link");
+    CHECK(netchan_chan_type(s_ctrl) == NETCHAN_RELIABLE, "peer type differs");
+    CHECK(netchan_chan_type(s_anon) == NETCHAN_UNRELIABLE, "peer type differs");
+    CHECK(netchan_chan_state(s_ctrl) == 1, "peer channel is not open");
+
+    netchan_close(client);
+    netchan_close(server);
+    PASS();
+}
+
+/*
+ * The field is 64 bytes and the wire length is a single byte capped at 63,
+ * so an over-long content type has to survive being cut, and both ends have
+ * to cut it the same way. Otherwise two peers disagree about the name of a
+ * channel they are both looking at.
+ */
+static void
+test_content_type_truncation(void)
+{
+    TEST(content_type_truncation);
+
+    struct netchan_conn *client = netchan_open(0);
+    struct netchan_conn *server = netchan_open(1);
+    CHECK(client && server, "alloc failed");
+
+    struct nc_addr caddr = make_addr(0x7f000001, 10012);
+    struct nc_addr saddr = make_addr(0x7f000001, 20012);
+
+    netchan_connect(client, &saddr);
+    pump(client, server, &caddr);
+    netchan_accept(server);
+    pump(server, client, &saddr);
+    CHECK(netchan_state(client) == NETCHAN_STATE_CONNECTED, "not connected");
+
+    struct netchan_event ev;
+    while (netchan_poll(client, &ev)) {}
+    while (netchan_poll(server, &ev)) {}
+
+    char longct[128];
+    memset(longct, 'x', sizeof(longct));
+    longct[sizeof(longct) - 1] = '\0';
+
+    struct netchan_chan *ch = netchan_chan_open(client, NETCHAN_RELIABLE,
+                                                NETCHAN_DIR_SEND, longct);
+    CHECK(ch != NULL, "chan_open failed");
+
+    const char *local = netchan_chan_content_type(ch);
+    CHECK(strlen(local) == 63, "opener did not cap the content type at 63");
+
+    pump_both(client, server, &caddr, &saddr);
+
+    struct netchan_chan *sch = NULL;
+    while (netchan_poll(server, &ev))
+        if (ev.type == NETCHAN_EV_CHAN_OPEN && ev.ch) sch = ev.ch;
+    CHECK(sch != NULL, "no chan_open event on the peer");
+
+    const char *remote = netchan_chan_content_type(sch);
+    CHECK(strlen(remote) == 63, "peer did not cap the content type at 63");
+    CHECK(strcmp(local, remote) == 0, "the two ends cut the name differently");
+
+    netchan_close(client);
+    netchan_close(server);
+    PASS();
+}
+
 int
 main(void)
 {
@@ -665,6 +808,8 @@ main(void)
     test_peek_id();
     test_graceful_disconnect();
     test_stats();
+    test_accessors();
+    test_content_type_truncation();
 
     printf("\n%d/%d tests passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;
