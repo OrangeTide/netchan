@@ -13,10 +13,16 @@ required.
 | You want | Copy | Adds |
 |---|---|---|
 | the protocol only | `src/` | nothing |
-| protocol over UDP | `src/`, `transport/nc_udp.*` | `<sys/socket.h>` |
+| protocol over UDP | `src/`, `transport/nc_udp.*` | `<sys/socket.h>`, or winsock2 |
 | a browser gateway | add `transport/nc_ws.*` | nothing |
-| encryption | add `crypto/`, `third_party/` | monocypher |
-| a login | add `auth/` | monocypher |
+| encryption | add `crypto/`, `third_party/` | monocypher, `-lbcrypt` on Windows |
+| a login | add `auth/` | monocypher, `-lbcrypt` on Windows |
+
+Every layer here builds on POSIX and on Windows. The core is the only one
+that adds nothing to the link line on either, which is deliberate: it draws
+its connection ids from `rand_s` in the C runtime rather than from the
+`BCryptGenRandom` that `crypto/` and `auth/` use for key material. If you take
+`crypto/` or `auth/` onto Windows, add `-lbcrypt`.
 
 `src/nc_addr.h` is needed by every backend and belongs with `src/`. Copy
 `third_party/LICENCE-monocypher.md` along with the monocypher sources.
@@ -29,7 +35,9 @@ habit.
 
 Every source file includes its own headers by plain name, so the only thing a
 host build system has to supply is `-I` for each directory it took. There are
-no generated files, no configure step, and no compile-time feature detection.
+no generated files and no configure step. The platform differences that do
+exist are selected by the compiler's own predefined macros, `_WIN32` and the
+BSD and Apple ones, so nothing has to be detected or configured by the build.
 
 If your project also uses modular-make, each directory already carries a
 `module.mk` and you can add them to your `SUBDIRS` unchanged. The
