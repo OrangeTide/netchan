@@ -1,0 +1,88 @@
+name: Release
+
+# Tags are the release mechanism. GitHub serves a source snapshot for every
+# tag at a predictable URL whether or not a Release exists:
+#
+#   https://github.com/OrangeTide/netchan/archive/refs/tags/v0.5.0.tar.gz
+#
+# tools/vendor.sh fetches exactly that, so vendoring needs nothing published
+# by hand. This workflow adds the Release on top, for the notes and so the
+# tag shows up where people look for it.
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: publish ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      # A tag that disagrees with the header would ship a source tree that
+      # misreports its own version, and a vendored copy has nothing else to
+      # identify it by. Cheaper to fail here than to yank a release.
+      - name: Check the tag against NETCHAN_VERSION_STRING
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          hdr=$(sed -n 's/^#define NETCHAN_VERSION_STRING "\(.*\)"$/\1/p' \
+                src/netchan.h)
+          echo "tag=$tag header=$hdr"
+          if [ "$tag" != "$hdr" ]; then
+            echo "::error::tag v$tag does not match NETCHAN_VERSION_STRING $hdr"
+            exit 1
+          fi
+
+      # Never publish a tag that does not build and pass. CI covers the
+      # matrix on every push; this is the last gate before a version number
+      # becomes permanent.
+      - name: Build and test
+        run: |
+          make -j"$(getconf _NPROCESSORS_ONLN)"
+          make run-tests
+
+      - name: Check that vendor.sh is runnable
+        run: |
+          sh -n tools/vendor.sh
+          ./tools/vendor.sh --help >/dev/null
+
+      # The notes travel through a file, never through ${{ }} into a shell
+      # script: changelog text is arbitrary, and expression interpolation
+      # would paste it into the script itself. The section for this version
+      # goes in verbatim, and an absent one falls back to the commit log
+      # rather than publishing empty notes.
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          ver="${TAG#v}"
+          awk -v ver="$ver" '
+            $1 == "##" && $2 == ver { found = 1; next }
+            found && $1 == "##" { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+
+          if [ -s notes.md ] && grep -q '[^[:space:]]' notes.md; then
+            cat >> notes.md <<EOF
+
+          ## Vendoring
+
+          \`\`\`sh
+          curl -fsSL https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$TAG/tools/vendor.sh | sh -s -- --version $TAG
+          \`\`\`
+
+          The source snapshot below is what that fetches. See
+          [VENDORING.md](https://github.com/$GITHUB_REPOSITORY/blob/$TAG/VENDORING.md).
+          EOF
+            gh release create "$TAG" --title "$TAG" --notes-file notes.md
+          else
+            echo "no changelog section for $ver, generating notes from commits"
+            gh release create "$TAG" --title "$TAG" --generate-notes
+          fi
