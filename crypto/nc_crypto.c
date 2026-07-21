@@ -6,9 +6,10 @@
 #include <string.h>
 
 /*
- * OS entropy. Three backends, because a library that expects to be copied
+ * OS entropy. Four backends, because a library that expects to be copied
  * into somebody else's tree does not get to choose the platform:
  *
+ *   BCryptGenRandom  Windows. Link bcrypt.
  *   arc4random_buf   macOS and the BSDs. It cannot fail, so there is no
  *                    error path here to get wrong.
  *   getrandom(2)     Linux, glibc 2.25 and later. A short read is normal for
@@ -16,11 +17,16 @@
  *   /dev/urandom     everything else, and Linux kernels too old for the
  *                    syscall, where getrandom fails with ENOSYS.
  *
- * auth/keystore.c carries the same three-way helper. The duplication is
- * deliberate: the two layers are vendored independently, and neither should
- * drag in the other for twenty lines of platform selection.
+ * auth/keystore.c carries the same helper. The duplication is deliberate:
+ * the two layers are vendored independently, and neither should drag in the
+ * other for twenty lines of platform selection.
  */
-#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || \
+#if defined(_WIN32)
+#  define NC_RANDOM_BCRYPT 1
+#  define WIN32_LEAN_AND_MEAN
+#  include <windows.h>
+#  include <bcrypt.h>
+#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || \
     defined(__NetBSD__) || defined(__DragonFly__)
 #  define NC_RANDOM_ARC4 1
 #  include <stdlib.h>
@@ -44,7 +50,11 @@ static const uint8_t zero32[32];
 static int
 fill_random(uint8_t *buf, size_t n)
 {
-#if defined(NC_RANDOM_ARC4)
+#if defined(NC_RANDOM_BCRYPT)
+    /* STATUS_SUCCESS is 0. */
+    return BCryptGenRandom(NULL, (PUCHAR)buf, (ULONG)n,
+                           BCRYPT_USE_SYSTEM_PREFERRED_RNG) == 0 ? 0 : -1;
+#elif defined(NC_RANDOM_ARC4)
     arc4random_buf(buf, n);
     return 0;
 #else

@@ -26,4 +26,6 @@ nc_keystore_DIR := $(ROOT)
 nc_keystore_SRCS = keystore.c
 nc_keystore_LIBS = monocypher
 nc_keystore_EXPORTED_CPPFLAGS = -I$(nc_keystore_DIR)
+# Entropy is BCryptGenRandom on Windows; dependents carry it on the link line.
+nc_keystore_EXPORTED_LDLIBS.Windows_NT = -lbcrypt
 endif

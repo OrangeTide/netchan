@@ -4,12 +4,42 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+
+#ifdef _WIN32
+#  define WIN32_LEAN_AND_MEAN
+#  include <windows.h>
+#  include <direct.h>
+#else
+#  include <unistd.h>
+#endif
 
 #include "keystore.h"
 #include "monocypher.h"
 
 static int failures;
+
+/*
+ * A private scratch directory. mkdtemp is POSIX and Windows has neither it
+ * nor /tmp, so there it asks the OS where temporary files belong and keeps
+ * the name unique with the process id.
+ */
+static int
+temp_dir(char *buf, size_t n)
+{
+#ifdef _WIN32
+    char base[MAX_PATH];
+    DWORD len = GetTempPathA((DWORD)sizeof(base), base);
+
+    if (len == 0 || len >= sizeof(base))
+        return -1;
+    snprintf(buf, n, "%snc_auth_ks_%lu", base,
+             (unsigned long)GetCurrentProcessId());
+    return _mkdir(buf) == 0 ? 0 : -1;
+#else
+    snprintf(buf, n, "/tmp/nc_auth_ks_XXXXXX");
+    return mkdtemp(buf) ? 0 : -1;
+#endif
+}
 
 static void
 check(const char *what, int cond)
@@ -22,13 +52,13 @@ check(const char *what, int cond)
 int
 main(void)
 {
-    char dir[] = "/tmp/nc_auth_ks_XXXXXX";
-    char known[256], keyf[256], authk[256], pwf[256], hostf[256];
+    char dir[320];
+    char known[512], keyf[512], authk[512], pwf[512], hostf[512];
     uint8_t pk[32], other[32], sk[64], loaded_pk[32], stored[32];
     uint8_t host_a[32], host_b[32];
     FILE *f;
 
-    if (!mkdtemp(dir)) {
+    if (temp_dir(dir, sizeof(dir)) != 0) {
         printf("FAIL: cannot make a temp directory\n");
         return 1;
     }
