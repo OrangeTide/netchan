@@ -1,11 +1,18 @@
-/* test_gnet.c : host check of the game net layer over UDP loopback */
+/* test_gnet.c : host check of the game net layer over an in-memory link */
 /* Made by a machine. PUBLIC DOMAIN (CC0-1.0) */
 
+/*
+ * game_net owns no socket by design: the application pulls datagrams out
+ * and feeds them back in. So this drives it over mc_memlink, where delivery
+ * is a synchronous function call. The whole check is then deterministic,
+ * which matters most for the final state comparison. mc_udp is tested on
+ * its own in ../../tests/test_mc_udp.c.
+ */
+
 #include "game_net.h"
-#include "mc_udp.h"
+#include "mc_memlink.h"
 #include <stdio.h>
 #include <string.h>
-#include <poll.h>
 
 static int g_fail;
 #define CHECK(c, m) do { \
@@ -25,46 +32,46 @@ on_chat(int who, const char *text)
     strncpy(got_chat, text, sizeof(got_chat) - 1);
 }
 
-/*
- * Wait for either socket to become readable. Loopback delivery is not
- * synchronous everywhere: Linux queues the datagram inside sendto(), while
- * macOS hands it to a separate context, so a non-blocking read right after
- * the send finds nothing. Only the settle loop needs this, because the main
- * loop spins often enough to pick the datagrams up a few iterations later.
- */
-static void
-wait_pkt(int fd_a, int fd_b, int ms)
-{
-    struct pollfd p[2];
+static struct memlink link;
+static struct mc_addr saddr, caddr;
 
-    p[0].fd = fd_a;
-    p[1].fd = fd_b;
-    p[0].events = p[1].events = POLLIN;
-    p[0].revents = p[1].revents = 0;
-    poll(p, 2, ms);
+/* Carry both peers one step: whatever each has to send, the other receives
+ * before the step is over. */
+static void
+pump(void)
+{
+    uint8_t buf[MC_MTU];
+    struct mc_addr to, from;
+    int n;
+
+    while ((n = (int)gserver_pull(&srv, buf, sizeof(buf), &to)) > 0)
+        meml_send(&link, &saddr, buf, (size_t)n, &to);
+    while ((n = (int)gclient_pull(&cli, buf, sizeof(buf), &to)) > 0)
+        meml_send(&link, &caddr, buf, (size_t)n, &to);
+    while ((n = meml_recv(&link, &saddr, buf, sizeof(buf), &from)) > 0)
+        gserver_feed(&srv, buf, (size_t)n, &from);
+    while ((n = meml_recv(&link, &caddr, buf, sizeof(buf), &from)) > 0)
+        gclient_feed(&cli, buf, (size_t)n, &from);
 }
 
 int
 main(void)
 {
-    struct mc_udp su, cu;
-    struct mc_addr saddr, to, from;
-    uint8_t buf[MC_MTU];
     uint32_t now = 0;
-    int i, n, spawn_x = -1, spawn_y = -1, moved = 0;
+    int i, spawn_x = -1, spawn_y = -1, moved = 0;
 
-    if (mc_udp_open(&su, "127.0.0.1", 0) || mc_udp_open(&cu, "127.0.0.1", 0)) {
-        printf("socket setup failed\n");
+    meml_init(&link);
+    if (meml_open(&link, &saddr) != 0 || meml_open(&link, &caddr) != 0) {
+        printf("link setup failed\n");
         return 2;
     }
-    mc_udp_local(&su, &saddr);
 
     gserver_init(&srv, 0x1234);
     srv.on_chat = on_chat;
     gclient_init(&cli);
     gclient_connect(&cli, &saddr);
 
-    printf("game net layer test (UDP loopback)\n");
+    printf("game net layer test (in-memory link)\n");
 
     for (i = 0; i < 1500; i++) {
         gserver_service(&srv, now);
@@ -75,14 +82,7 @@ main(void)
         if (i == 800 && cli.have_map)
             gclient_chat(&cli, "hello");
 
-        while ((n = (int)gserver_pull(&srv, buf, sizeof(buf), &to)) > 0)
-            mc_udp_send(&su, buf, (size_t)n, &to);
-        while ((n = (int)gclient_pull(&cli, buf, sizeof(buf), &to)) > 0)
-            mc_udp_send(&cu, buf, (size_t)n, &to);
-        while ((n = mc_udp_recv(&su, buf, sizeof(buf), &from)) > 0)
-            gserver_feed(&srv, buf, (size_t)n, &from);
-        while ((n = mc_udp_recv(&cu, buf, sizeof(buf), &from)) > 0)
-            gclient_feed(&cli, buf, (size_t)n, &from);
+        pump();
 
         if (cli.have_map && cli.player >= 0 && cli.world.players[cli.player].alive) {
             struct player *p = &cli.world.players[cli.player];
@@ -95,24 +95,14 @@ main(void)
     /*
      * Settle before comparing world state. The loop above sends input on
      * every iteration, so it always ends with a move the server has not
-     * broadcast yet, or a broadcast still in flight. Stop sending input and
-     * pump for several more server ticks so the client holds the final
-     * state. GAME_TICK_MS is 125, so 40 iterations covers six ticks.
+     * broadcast yet. Stop sending input and pump for a few more server
+     * ticks, and the client ends up holding the state the server just
+     * simulated. GAME_TICK_MS is 125, so 40 iterations covers six ticks.
      */
     for (i = 0; i < 40; i++) {
         gserver_service(&srv, now);
         gclient_service(&cli, now);
-
-        while ((n = (int)gserver_pull(&srv, buf, sizeof(buf), &to)) > 0)
-            mc_udp_send(&su, buf, (size_t)n, &to);
-        while ((n = (int)gclient_pull(&cli, buf, sizeof(buf), &to)) > 0)
-            mc_udp_send(&cu, buf, (size_t)n, &to);
-        wait_pkt(su.fd, cu.fd, 10);
-        while ((n = mc_udp_recv(&su, buf, sizeof(buf), &from)) > 0)
-            gserver_feed(&srv, buf, (size_t)n, &from);
-        while ((n = mc_udp_recv(&cu, buf, sizeof(buf), &from)) > 0)
-            gclient_feed(&cli, buf, (size_t)n, &from);
-
+        pump();
         now += 20;
     }
 
@@ -138,8 +128,6 @@ main(void)
 
     gclient_close(&cli);
     gserver_close(&srv);
-    mc_udp_close(&su);
-    mc_udp_close(&cu);
 
     printf(g_fail ? "\n%d check(s) FAILED\n" : "\nall checks passed\n", g_fail);
     return g_fail ? 1 : 0;
