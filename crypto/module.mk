@@ -17,4 +17,6 @@ nc_crypto_SRCS = nc_crypto.c
 nc_crypto_CPPFLAGS = $(NETCHAN_SRC_INC)
 nc_crypto_LIBS = monocypher
 nc_crypto_EXPORTED_CPPFLAGS = -I$(nc_crypto_DIR) $(NETCHAN_SRC_INC)
+# Entropy is BCryptGenRandom on Windows; dependents carry it on the link line.
+nc_crypto_EXPORTED_LDLIBS.Windows_NT = -lbcrypt
 endif

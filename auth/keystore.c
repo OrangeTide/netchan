@@ -11,10 +11,15 @@
 #include <unistd.h>
 
 /*
- * OS entropy, the same three-way selection crypto/nc_crypto.c makes. See the
- * comment there for why it is spelled out twice rather than shared.
+ * OS entropy, the same selection crypto/nc_crypto.c makes. See the comment
+ * there for why it is spelled out twice rather than shared.
  */
-#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || \
+#if defined(_WIN32)
+#  define KS_RANDOM_BCRYPT 1
+#  define WIN32_LEAN_AND_MEAN
+#  include <windows.h>
+#  include <bcrypt.h>
+#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || \
     defined(__NetBSD__) || defined(__DragonFly__)
 #  define KS_RANDOM_ARC4 1
 #else
@@ -45,7 +50,11 @@ static const char KEYFILE_MAGIC[] = "netchan-key-v1";
 static int
 ks_random(uint8_t *buf, size_t n)
 {
-#if defined(KS_RANDOM_ARC4)
+#if defined(KS_RANDOM_BCRYPT)
+    /* STATUS_SUCCESS is 0. */
+    return BCryptGenRandom(NULL, (PUCHAR)buf, (ULONG)n,
+                           BCRYPT_USE_SYSTEM_PREFERRED_RNG) == 0 ? 0 : -1;
+#elif defined(KS_RANDOM_ARC4)
     arc4random_buf(buf, n);
     return 0;
 #else
@@ -115,8 +124,20 @@ ks_hex_decode(uint8_t *out, size_t n, const char *in)
     return 0;
 }
 
-/* Open for append or create, always mode 0600: these files hold secrets or
- * trust decisions and none of them is anyone else's business. */
+/*
+ * Open for append or create, always mode 0600: these files hold secrets or
+ * trust decisions and none of them is anyone else's business.
+ *
+ * Two things differ on Windows and neither is fixed here. The 0600 is
+ * ignored, because permissions are ACLs and the CRT has nowhere to put a
+ * POSIX mode, so a key file is left at whatever the containing directory
+ * grants. And the streams are opened in text mode, so every "\n" written
+ * becomes "\r\n" on disk and is translated back on the way in. Every format
+ * in this file is line-oriented hex, so it round-trips either way, and a
+ * file written on one platform still reads on the other. Anything added
+ * here that is position-sensitive or genuinely binary would need "b" in the
+ * mode string and a second look at both points.
+ */
 static FILE *
 open_private(const char *path, const char *mode, int flags)
 {
