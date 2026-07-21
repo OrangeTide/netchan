@@ -124,7 +124,7 @@ drain(int fd, struct netchan_conn *c)
     struct sockaddr_storage from;
     socklen_t fl = sizeof(from);
     int got = 0;
-    if (!wait_readable(fd, 50)) return 0;
+    if (!wait_readable(fd, 25)) return 0;
     for (;;) {
         ssize_t n = recvfrom(fd, pkt, sizeof(pkt), MSG_DONTWAIT,
                              (struct sockaddr *)&from, &fl);
@@ -138,15 +138,24 @@ drain(int fd, struct netchan_conn *c)
     return got;
 }
 
+/*
+ * Carry both peers until the link goes quiet: rounds keep running as long as
+ * either side still has something to send or receive, and stop once two in a
+ * row move nothing. Traffic that arrives late keeps the loop alive instead of
+ * ending it, so a slow platform costs time rather than a false failure. The
+ * round ceiling is only a backstop against a peer that never settles.
+ */
 static void
 pump_both(int cfd, struct netchan_conn *cl, int sfd, struct netchan_conn *sv)
 {
-    for (int i = 0; i < 16; i++) {
+    int idle = 0;
+
+    for (int i = 0; i < 64 && idle < 2; i++) {
         flush(cfd, cl);
         flush(sfd, sv);
         int a = drain(sfd, sv);
         int b = drain(cfd, cl);
-        if (a == 0 && b == 0 && i > 2) break;
+        idle = (a == 0 && b == 0) ? idle + 1 : 0;
     }
 }
 
