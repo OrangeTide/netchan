@@ -228,10 +228,22 @@ either way, and files written on one platform read on the other.
 
 ## Status
 
+Releases are SemVer, tagged `vMAJOR.MINOR.PATCH`, and the current one is
+whatever the [releases page](https://github.com/OrangeTide/netchan/releases)
+says. A copy of the source states its own version in `src/netchan.h` as
+`NETCHAN_VERSION_STRING`.
+
 The protocol is stable enough to build on and is not frozen. Wire
 compatibility holds within a minor version and no further; see
 [CHANGELOG.md](CHANGELOG.md). The one break so far is `nc_crypto`'s HELLO
 growing from 33 to 65 bytes when identity keys arrived.
+
+To take it into your own tree, see [VENDORING.md](VENDORING.md), or take the
+latest release with:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/OrangeTide/netchan/main/tools/vendor.sh | sh
+```
 
 ## Provenance
 

@@ -4,7 +4,14 @@ Wire compatibility holds within a minor version and no further. There is no
 version negotiation on the wire, so a skew between two peers shows up as a
 handshake that never completes, not as a subtle failure later.
 
-## Unreleased
+Releases are SemVer and are tagged `vMAJOR.MINOR.PATCH`. The tag is the
+release: GitHub serves a source snapshot for it, which is what
+`tools/vendor.sh` fetches.
+
+## 0.5.0 - 2026-07-20
+
+The first tagged release. Earlier versions here describe the tree as it was
+developed, not as anything anyone could name and fetch.
 
 ### Fixed
 
@@ -36,6 +43,23 @@ handshake that never completes, not as a subtle failure later.
 
 ### Added
 
+- A version, and a way to get one. The project is SemVer from 0.5.0 on, the
+  version is in `src/netchan.h` as `NETCHAN_VERSION_MAJOR`, `_MINOR`, `_PATCH`,
+  `_STRING`, and a comparable `NETCHAN_VERSION` integer, and releases are git
+  tags of the form `v0.5.0`. A release workflow refuses to publish a tag that
+  disagrees with the header.
+- `tools/vendor.sh`, which copies a release into another project's tree. It
+  takes the layers you name plus the ones they depend on, from the source
+  snapshot GitHub serves for the tag, and records what it took. It runs
+  standalone or piped:
+
+  ```sh
+  curl -fsSL https://raw.githubusercontent.com/OrangeTide/netchan/v0.5.0/tools/vendor.sh \
+    | sh -s -- --version v0.5.0 --layer auth
+  ```
+- `tests/netchan_test`: the channel accessors, including a receiver
+  identifying channels by the content type carried in the peer's OPEN, and
+  the truncation seam where the 64-byte field meets the 63-byte wire cap.
 - Windows support for the library. The core takes its monotonic clock from
   `GetTickCount64` and its connection ids from `rand_s`; `nc_crypto` and
   `keystore` take entropy from `BCryptGenRandom`; `nc_udp.h` includes winsock2

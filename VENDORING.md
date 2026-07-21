@@ -5,6 +5,50 @@ installed. There is no shared library to ship, no `pkg-config` file, and no
 version to negotiate at runtime. You take the source, you own the copy, and
 you upgrade when you decide to.
 
+## Getting a Release
+
+Releases are git tags of the form `vMAJOR.MINOR.PATCH`, and GitHub serves a
+source snapshot for every tag at a fixed URL. The tag is the whole release
+mechanism, and GitHub builds the archive on demand:
+
+```
+https://github.com/OrangeTide/netchan/archive/refs/tags/<tag>.tar.gz
+```
+
+`tools/vendor.sh` fetches exactly that, takes the layers you name plus the
+ones they depend on, and writes a `VENDORED.md` recording the version so the
+next upgrade knows where it started. With no `--version` it takes the latest
+release:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/OrangeTide/netchan/main/tools/vendor.sh \
+  | sh -s -- --layer auth --dest third_party/netchan
+```
+
+Run it with `--help` for the options, or `--list` to see what each layer
+copies. It needs `curl` or `wget`, and `tar`. It refuses to overwrite an
+existing destination unless you pass `--force`, and `--force` first removes
+the layers the previous run recorded, so switching layer sets does not leave
+stale sources behind.
+
+For a repeatable build, name the release and take the script from that same
+tag rather than from `main`. A tag names an immutable commit, so the script
+you run is the one that shipped with the release and cannot change under you.
+Piping anything from the network into a shell means trusting the server and
+the connection; reading it first is the better habit:
+
+```sh
+TAG=v0.5.0    # whichever release you want
+curl -fsSLO "https://raw.githubusercontent.com/OrangeTide/netchan/$TAG/tools/vendor.sh"
+less vendor.sh && sh vendor.sh --version "$TAG" --layer auth
+```
+
+None of this needs the script. It copies directories; doing it by hand is a
+`tar -xzf` and a `cp -R` of the directories in the table.
+
+`NETCHAN_VENDOR_REPO`, `NETCHAN_VENDOR_BASE_URL`, and `NETCHAN_VENDOR_API_URL`
+override where it fetches from, for a fork, a mirror, or an air-gapped copy.
+
 ## What to Copy
 
 Take the layer you need and everything below it. Nothing above it is
@@ -60,6 +104,20 @@ lines, and is kept working as a standing check that the claim holds.
 The layers are independent, but the versions are not: `nc_crypto`,
 `nc_auth`, and `keystore` are developed against the core in the same tree.
 Upgrade the whole set together, then run `tests/`.
+
+Re-running `tools/vendor.sh --force` with a newer `--version` is the whole
+upgrade. The `VENDORED.md` it leaves behind names the version you are on, and
+`NETCHAN_VERSION_STRING` in `src/netchan.h` says the same thing, so a copy can
+always identify itself:
+
+```c
+#if NETCHAN_VERSION < 500          /* 0.5.0 */
+#  error "netchan 0.5.0 or newer is required"
+#endif
+```
+
+Versions are SemVer. The major version is the compatibility promise for the
+API; the wire protocol is versioned separately and is stricter.
 
 Wire compatibility holds within a minor version and no further.
 [CHANGELOG.md](CHANGELOG.md) records every break with the reason for it, and
