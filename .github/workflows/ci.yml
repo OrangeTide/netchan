@@ -82,6 +82,57 @@ jobs:
       - name: Build and test the core alone
         run: make -f Makefile.simple check
 
+      - name: Lint the vendoring script
+        run: |
+          sh -n tools/vendor.sh
+          dash -n tools/vendor.sh
+          ./tools/vendor.sh --help >/dev/null
+          ./tools/vendor.sh --list >/dev/null
+
+      # Vendoring is how people are told to consume this, so the script gets
+      # run the way they would run it. The snapshot is built from the checkout
+      # and served over file://, which exercises the whole path without
+      # needing a published release: fetch, unpack, resolve layer
+      # dependencies, copy, and compile the result.
+      - name: Vendor this checkout and build against it
+        run: |
+          ver=$(sed -n 's/^#define NETCHAN_VERSION_STRING "\(.*\)"$/\1/p' \
+                src/netchan.h)
+          tags="$RUNNER_TEMP/mirror/$GITHUB_REPOSITORY/archive/refs/tags"
+          mkdir -p "$tags"
+          tar --exclude=_build --exclude=_out --exclude=.git \
+              --transform "s,^\.,netchan-$ver," \
+              -czf "$tags/v$ver.tar.gz" .
+
+          work="$RUNNER_TEMP/consumer"
+          mkdir -p "$work"
+          cd "$work"
+          NETCHAN_VENDOR_BASE_URL="file://$RUNNER_TEMP/mirror" \
+            sh "$GITHUB_WORKSPACE/tools/vendor.sh" \
+              --version "v$ver" --layer auth --dest vendor/netchan
+
+          grep -q "v$ver" vendor/netchan/VENDORED.md
+          test -f vendor/netchan/LICENSE
+
+          cat > main.c <<'EOF'
+          #include "netchan.h"
+          #include "nc_crypto.h"
+          #include "keystore.h"
+          #include <stdio.h>
+          int main(void)
+          {
+              struct netchan_conn *c = netchan_open(0);
+              printf("vendored netchan %s\n", NETCHAN_VERSION_STRING);
+              netchan_close(c);
+              return 0;
+          }
+          EOF
+          cc -Wall -Wextra -Werror -o app main.c \
+             $(find vendor/netchan -maxdepth 2 -name '*.c') \
+             -Ivendor/netchan/src -Ivendor/netchan/crypto \
+             -Ivendor/netchan/third_party -Ivendor/netchan/auth
+          ./app
+
   windows:
     name: windows cross + wine
     runs-on: ubuntu-latest
