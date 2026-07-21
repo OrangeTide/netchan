@@ -20,8 +20,33 @@ handshake that never completes, not as a subtle failure later.
   a retry on `EINTR`, and `/dev/urandom` otherwise, which also covers a Linux
   kernel too old for the syscall. macOS is now built and tested in CI, which
   is how this was found.
+- Three tests read from a loopback socket without ever waiting and treated an
+  empty queue as no traffic. Linux queues a loopback datagram inside
+  `sendto()`, so the read always found it; macOS delivers through a separate
+  context, so the reads came back empty and the tests gave up early. That
+  failed the macOS CI job in `nc_udp_test` and `test_gnet`, and left
+  `test_microchan` passing on a few microseconds of luck. The socket tests now
+  wait for the datagram, and the protocol tests no longer use a socket at all.
 
 ### Added
+
+- `microchan/tests/mc_memlink`, an in-memory datagram link for tests:
+  delivery is a function call, and loss, duplication, and reordering happen on
+  a fixed count. `test_microchan` gains a check that the Go-Back-N window
+  holds its line through reordering and duplication, which loopback UDP could
+  not produce on demand.
+- `microchan/tests/test_mc_udp`, covering the host UDP transport on its own:
+  the ephemeral bind, the address packing, the return convention of a
+  non-blocking recv, and that the address a datagram arrives with is usable as
+  a destination.
+
+### Changed
+
+- `test_microchan` and `test_gnet` run over `mc_memlink` instead of loopback
+  UDP. Neither the core nor the game net layer touches a socket, so the
+  socket was testing nothing about them while making both tests
+  platform-dependent. They are now deterministic everywhere, and `test_gnet`
+  went from 1.2s to 0.3s.
 
 - `microchan/`, a second library: the same idea with one allocation per
   connection and none after it, every buffer inside it fixed at compile time,
