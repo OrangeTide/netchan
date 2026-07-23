@@ -129,6 +129,8 @@ struct netchan_conn *netchan_open(int server);
  *
  * Does nothing unless the connection is CONNECTED, so calling it twice, or on
  * a session that never finished its handshake, is safe and queues nothing.
+ * The state is CLOSING afterward, and advances to CLOSED without an event if
+ * the peer's own DISCONNECT arrives before netchan_close.
  *
  * Best effort.  DISCONNECT is one unreliable control frame and netchan does
  * not retransmit it.  If that datagram is lost, or the caller never runs the

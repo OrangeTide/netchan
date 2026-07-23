@@ -587,6 +587,116 @@ test_graceful_disconnect(void)
 }
 
 /*
+ * Both ends leave at the same moment, so each one's DISCONNECT arrives at a
+ * peer that has already ended the session itself.  Neither has news for its
+ * caller, who did the disconnecting, but both must still reach CLOSED.
+ */
+static void
+test_simultaneous_disconnect(void)
+{
+    TEST(simultaneous_disconnect);
+
+    struct netchan_conn *client = netchan_open(0);
+    struct netchan_conn *server = netchan_open(1);
+
+    struct nc_addr caddr = make_addr(0x7f000001, 10013);
+    struct nc_addr saddr = make_addr(0x7f000001, 20013);
+
+    netchan_connect(client, &saddr);
+    pump(client, server, &caddr);
+    netchan_accept(server);
+    pump_both(client, server, &caddr, &saddr);
+
+    struct netchan_event ev;
+    while (netchan_poll(client, &ev)) {}
+    while (netchan_poll(server, &ev)) {}
+
+    netchan_disconnect(client);
+    netchan_disconnect(server);
+    CHECK(netchan_state(client) == NETCHAN_STATE_CLOSING &&
+          netchan_state(server) == NETCHAN_STATE_CLOSING,
+          "both ends did not enter CLOSING");
+
+    /* The two frames cross on the wire. */
+    pump(client, server, &caddr);
+    pump(server, client, &saddr);
+
+    CHECK(netchan_state(client) == NETCHAN_STATE_CLOSED,
+          "client did not reach CLOSED");
+    CHECK(netchan_state(server) == NETCHAN_STATE_CLOSED,
+          "server did not reach CLOSED");
+
+    int events = 0;
+    while (netchan_poll(client, &ev))
+        if (ev.type == NETCHAN_EV_DISCONNECTED)
+            events++;
+    while (netchan_poll(server, &ev))
+        if (ev.type == NETCHAN_EV_DISCONNECTED)
+            events++;
+    CHECK(events == 0, "a caller was told about the disconnect it asked for");
+
+    netchan_close(client);
+    netchan_close(server);
+    PASS();
+}
+
+/*
+ * A DISCONNECT ends a session once.  Nothing in the receive path filters a
+ * duplicated or replayed datagram, so the same frame can arrive twice, and
+ * the second copy must not raise a second event for a connection the
+ * application has already torn down.
+ */
+static void
+test_duplicate_disconnect(void)
+{
+    TEST(duplicate_disconnect);
+
+    struct netchan_conn *client = netchan_open(0);
+    struct netchan_conn *server = netchan_open(1);
+
+    struct nc_addr caddr = make_addr(0x7f000001, 10012);
+    struct nc_addr saddr = make_addr(0x7f000001, 20012);
+
+    netchan_connect(client, &saddr);
+    pump(client, server, &caddr);
+    netchan_accept(server);
+    pump_both(client, server, &caddr, &saddr);
+
+    struct netchan_event ev;
+    while (netchan_poll(client, &ev)) {}
+    while (netchan_poll(server, &ev)) {}
+
+    /* Keep the datagram carrying the DISCONNECT so it can be delivered a
+     * second time, the way a duplicating network would. */
+    uint8_t bye[2048];
+    struct nc_addr to;
+    size_t byelen;
+
+    netchan_disconnect(client);
+    byelen = netchan_send_next(client, bye, sizeof(bye), &to);
+    CHECK(byelen != 0, "disconnect queued no frame");
+
+    int events = 0;
+    netchan_feed(server, bye, byelen, &caddr);
+    while (netchan_poll(server, &ev))
+        if (ev.type == NETCHAN_EV_DISCONNECTED)
+            events++;
+    CHECK(events == 1, "first DISCONNECT did not end the session");
+    CHECK(netchan_state(server) == NETCHAN_STATE_CLOSED,
+          "server did not reach CLOSED");
+
+    netchan_feed(server, bye, byelen, &caddr);
+    while (netchan_poll(server, &ev))
+        if (ev.type == NETCHAN_EV_DISCONNECTED)
+            events++;
+    CHECK(events == 1, "a repeated DISCONNECT raised a second event");
+
+    netchan_close(client);
+    netchan_close(server);
+    PASS();
+}
+
+/*
  * Only a CONNECTED session has a peer to tell, so netchan_disconnect is a
  * quiet no-op everywhere else.  A caller that cannot know which state a link
  * reached, such as a wrapper tearing down after a failed open, depends on
@@ -884,6 +994,8 @@ main(void)
     test_channel_close();
     test_peek_id();
     test_graceful_disconnect();
+    test_duplicate_disconnect();
+    test_simultaneous_disconnect();
     test_disconnect_outside_connected();
     test_stats();
     test_accessors();

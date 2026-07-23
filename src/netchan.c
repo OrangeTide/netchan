@@ -679,8 +679,27 @@ process_disconnect(struct netchan_conn *c, const uint8_t *p, size_t len)
 {
     if (len < 3) return NETCHAN_ERR_PROTO;
     (void)p;
-    c->state = NETCHAN_STATE_CLOSED;
-    ev_push(c, NETCHAN_EV_DISCONNECTED, NULL);
+    /*
+     * Only a session that still believes it is live has news to report.  A
+     * duplicated or replayed datagram carries the same DISCONNECT as the one
+     * that ended the session, and nothing here filters those out, so without
+     * this the application sees a second NETCHAN_EV_DISCONNECTED for a
+     * connection it has already torn down.  A local disconnect is left to
+     * finish quietly: the caller ended the session itself and is not waiting
+     * to be told, so the state advances and no event is raised.
+     */
+    switch (c->state) {
+    case NETCHAN_STATE_CONNECTING:
+    case NETCHAN_STATE_CONNECTED:
+        c->state = NETCHAN_STATE_CLOSED;
+        ev_push(c, NETCHAN_EV_DISCONNECTED, NULL);
+        break;
+    case NETCHAN_STATE_CLOSING:
+        c->state = NETCHAN_STATE_CLOSED;
+        break;
+    default:
+        break;
+    }
     return 3;
 }
 

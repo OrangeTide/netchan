@@ -29,6 +29,14 @@ release: GitHub serves a source snapshot for it, which is what
 
 ### Fixed
 
+- A repeated DISCONNECT no longer raises a second `NETCHAN_EV_DISCONNECTED`.
+  Nothing in the receive path filters a duplicated or replayed datagram, so
+  the frame that ended a session can arrive again and the application saw a
+  second disconnect for a connection it had already torn down. Only a session
+  that still believes it is live reports the news now. One that disconnected
+  locally advances to CLOSED without an event, since its caller ended the
+  session itself and is not waiting to be told.
+
 - The transport wrappers closed a live connection with `netchan_close` alone,
   so nothing told the peer the link had ended and it waited out its idle
   timeout, seconds later, to notice. `secure_link_close`, `auth_link_close`,
