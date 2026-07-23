@@ -563,14 +563,25 @@ test_graceful_disconnect(void)
     while (netchan_poll(client, &ev)) {}
     while (netchan_poll(server, &ev)) {}
 
-    /* client closes -- sends DISCONNECT */
+    /* The client leaves gracefully: netchan_disconnect queues a DISCONNECT
+     * and enters CLOSING, without freeing, so the frame can still be sent. */
+    netchan_disconnect(client);
+    CHECK(netchan_state(client) == NETCHAN_STATE_CLOSING,
+          "disconnect did not enter CLOSING");
+
+    /* One send cycle puts the DISCONNECT on the wire.  The peer must see it
+     * at once, not have to wait out its idle timeout.  (netchan_close
+     * alone would queue the same frame but free the conn before it could be
+     * sent, which is why a graceful shutdown needs disconnect-then-flush.) */
+    pump(client, server, &caddr);
+
+    int saw_disconnect = 0;
+    while (netchan_poll(server, &ev))
+        if (ev.type == NETCHAN_EV_DISCONNECTED)
+            saw_disconnect = 1;
+    CHECK(saw_disconnect, "server did not see the DISCONNECT");
+
     netchan_close(client);
-
-    /* the close queued a DISCONNECT frame, but also freed the conn.
-     * We need a different approach: close sends disconnect then frees.
-     * The server won't see it because we can't pump after free.
-     * This tests that close doesn't crash. */
-
     netchan_close(server);
     PASS();
 }
