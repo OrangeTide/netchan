@@ -192,6 +192,144 @@ test_tick_keeps_running(void)
     return 0;
 }
 
+/****************************************************************
+ * A close reaches the peer
+ ****************************************************************/
+
+struct close_probe {
+    struct secure_link *client;
+    struct iox_loop    *loop;
+    int                 up;
+    int                 down;
+};
+
+static void
+probe_up(struct secure_link *sl, void *user)
+{
+    struct close_probe *p = user;
+
+    (void)sl;
+    p->up = 1;
+}
+
+static void
+probe_down(struct secure_link *sl, void *user)
+{
+    struct close_probe *p = user;
+
+    (void)sl;
+    p->down = 1;
+    iox_loop_stop(p->loop);
+}
+
+/*
+ * Close the client as soon as the session is up, from inside the loop, so the
+ * server is still running to receive what the close says.
+ *
+ * Polling a flag rather than closing from on_up itself: that callback fires
+ * from advance(), whose callers go on to use the link after it returns, so
+ * freeing it there would be a use-after-free. Polling rather than waiting out
+ * a fixed delay: how long an X25519 handshake takes on a loaded machine is not
+ * something this test should have an opinion about.
+ */
+static void
+close_when_up(struct iox_loop *l, void *arg)
+{
+    struct close_probe *p = arg;
+
+    if (!p->client)
+        return;
+    if (!p->up) {
+        iox_timer_add(l, 20, close_when_up, p);
+        return;
+    }
+    secure_link_close(p->client);
+    p->client = NULL;
+}
+
+/*
+ * secure_link_close disconnects, flushes, then closes, so the peer hears the
+ * link end rather than waiting out a 30 second idle timeout. The test closes
+ * the client the moment the session is up and requires the server to raise
+ * on_down before a three second watchdog. Nothing but a DISCONNECT on the wire
+ * can fire that callback in the time allowed, which is the point: a close that
+ * only frees would leave the server silent until long after the loop stopped.
+ */
+static int
+test_close_reaches_peer(void)
+{
+    struct iox_loop *loop;
+    struct secure_link_cb scb, ccb;
+    struct secure_link *server;
+    struct close_probe probe;
+    struct nc_addr peer;
+    struct sockaddr_in sa;
+    const uint8_t psk[32] = { 'd', 'e', 'm', 'o', 0 };
+    int sfd, cfd, sport, fl;
+
+    memset(&probe, 0, sizeof(probe));
+
+    sfd = udp_ephemeral(&sport);
+    cfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sfd < 0 || cfd < 0) {
+        fprintf(stderr, "FAIL: close test sockets\n");
+        return -1;
+    }
+    fl = fcntl(cfd, F_GETFL, 0);
+    if (fl >= 0)
+        (void)fcntl(cfd, F_SETFL, fl | O_NONBLOCK);
+
+    memset(&sa, 0, sizeof(sa));
+    sa.sin_family = AF_INET;
+    sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    sa.sin_port = htons((uint16_t)sport);
+    if (nc_udp_from_sockaddr(&peer, (struct sockaddr *)&sa, sizeof(sa)) != 0) {
+        fprintf(stderr, "FAIL: close test address\n");
+        return -1;
+    }
+
+    loop = iox_loop_new();
+    probe.loop = loop;
+
+    memset(&scb, 0, sizeof(scb));
+    scb.on_down = probe_down;
+    scb.user = &probe;
+
+    memset(&ccb, 0, sizeof(ccb));
+    ccb.on_up = probe_up;
+    ccb.user = &probe;
+
+    server = secure_link_open(loop, sfd, 1, NULL, psk, 1, &scb);
+    probe.client = secure_link_open(loop, cfd, 0, &peer, psk, 1, &ccb);
+    if (!server || !probe.client) {
+        fprintf(stderr, "FAIL: close test secure_link_open\n");
+        return -1;
+    }
+
+    iox_timer_add(loop, 20, close_when_up, &probe);
+    iox_timer_add(loop, 3000, stop_now, NULL);
+    iox_loop_run(loop);
+
+    if (probe.client) {                 /* if the watchdog stopped us first */
+        secure_link_close(probe.client);
+        probe.client = NULL;
+    }
+    secure_link_close(server);
+    iox_loop_free(loop);
+    close(sfd);
+    close(cfd);
+
+    if (!probe.up) {
+        fprintf(stderr, "FAIL: the link never came up\n");
+        return -1;
+    }
+    if (!probe.down) {
+        fprintf(stderr, "FAIL: the server never heard the client close\n");
+        return -1;
+    }
+    return 0;
+}
+
 int
 main(void)
 {
@@ -272,5 +410,9 @@ main(void)
     if (test_tick_keeps_running() != 0)
         return 1;
     printf("ok: a silent peer gets the handshake repeated\n");
+
+    if (test_close_reaches_peer() != 0)
+        return 1;
+    printf("ok: a close tells the peer instead of timing out\n");
     return 0;
 }

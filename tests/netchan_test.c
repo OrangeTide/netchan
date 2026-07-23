@@ -586,6 +586,72 @@ test_graceful_disconnect(void)
     PASS();
 }
 
+/*
+ * Only a CONNECTED session has a peer to tell, so netchan_disconnect is a
+ * quiet no-op everywhere else.  A caller that cannot know which state a link
+ * reached, such as a wrapper tearing down after a failed open, depends on
+ * that: the call must neither change the state nor leave a frame queued for
+ * a peer that would not understand it.
+ */
+static void
+test_disconnect_outside_connected(void)
+{
+    TEST(disconnect_outside_connected);
+
+    uint8_t buf[2048];
+    struct nc_addr to;
+
+    netchan_disconnect(NULL);   /* must not crash */
+
+    struct netchan_conn *client = netchan_open(0);
+    struct netchan_conn *server = netchan_open(1);
+
+    struct nc_addr caddr = make_addr(0x7f000001, 10011);
+    struct nc_addr saddr = make_addr(0x7f000001, 20011);
+
+    /* NEW: nothing has been said to anyone yet. */
+    netchan_disconnect(client);
+    CHECK(netchan_state(client) == NETCHAN_STATE_NEW,
+          "disconnect moved a NEW conn");
+    CHECK(netchan_send_next(client, buf, sizeof(buf), &to) == 0,
+          "disconnect queued a frame on a NEW conn");
+
+    /* CONNECTING: hold the connect frame rather than delivering it, so the
+     * queue is empty and anything in it afterward is the disconnect's own
+     * doing.  The frame is delivered below to finish the handshake. */
+    uint8_t init[2048];
+    size_t initlen;
+
+    netchan_connect(client, &saddr);
+    initlen = netchan_send_next(client, init, sizeof(init), &to);
+    CHECK(initlen != 0, "connect queued no frame");
+    netchan_disconnect(client);
+    CHECK(netchan_state(client) == NETCHAN_STATE_CONNECTING,
+          "disconnect moved a CONNECTING conn");
+    CHECK(netchan_send_next(client, buf, sizeof(buf), &to) == 0,
+          "disconnect queued a frame mid-handshake");
+
+    /* Finish the handshake, then disconnect for real. */
+    netchan_feed(server, init, initlen, &caddr);
+    netchan_accept(server);
+    pump_both(client, server, &caddr, &saddr);
+    netchan_disconnect(client);
+    CHECK(netchan_state(client) == NETCHAN_STATE_CLOSING,
+          "disconnect did not enter CLOSING");
+    while (netchan_send_next(client, buf, sizeof(buf), &to) != 0) {}
+
+    /* CLOSING: a second call adds nothing. */
+    netchan_disconnect(client);
+    CHECK(netchan_state(client) == NETCHAN_STATE_CLOSING,
+          "a second disconnect moved the conn");
+    CHECK(netchan_send_next(client, buf, sizeof(buf), &to) == 0,
+          "a second disconnect queued another frame");
+
+    netchan_close(client);
+    netchan_close(server);
+    PASS();
+}
+
 static void
 test_stats(void)
 {
@@ -818,6 +884,7 @@ main(void)
     test_channel_close();
     test_peek_id();
     test_graceful_disconnect();
+    test_disconnect_outside_connected();
     test_stats();
     test_accessors();
     test_content_type_truncation();
