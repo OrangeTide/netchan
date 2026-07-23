@@ -8,6 +8,35 @@ Releases are SemVer and are tagged `vMAJOR.MINOR.PATCH`. The tag is the
 release: GitHub serves a source snapshot for it, which is what
 `tools/vendor.sh` fetches.
 
+## 0.6.0 - 2026-07-23
+
+### Added
+
+- `netchan_disconnect()`: queue a DISCONNECT for the peer and enter CLOSING,
+  without freeing. netchan has no socket of its own, so a caller must run one
+  `netchan_send_next` cycle to put the frame on the wire, then `netchan_close`
+  to free. This is the graceful-shutdown counterpart to `netchan_close`, which
+  frees without telling the peer anything. It does nothing unless the session
+  is CONNECTED, and the frame is best effort: it goes out once, unreliably,
+  and is not retransmitted, so a lost datagram leaves the peer waiting out its
+  idle timeout as before.
+
+### Changed
+
+- `netchan_close` no longer queues a DISCONNECT. It wrote the frame into a
+  buffer the same call then freed, so nothing ever reached the wire, and the
+  dead write made close read like a graceful shutdown.
+
+### Fixed
+
+- The transport wrappers closed a live connection with `netchan_close` alone,
+  so nothing told the peer the link had ended and it waited out its idle
+  timeout, seconds later, to notice. `secure_link_close`, `auth_link_close`,
+  and the chat example now call `netchan_disconnect`, flush, then
+  `netchan_close`, so a peer sees a clean shutdown at once. A program that
+  copied one of these wrappers as its starting point inherited the delay; that
+  is exactly how it was found downstream.
+
 ## 0.5.0 - 2026-07-20
 
 The first tagged release. Earlier versions here describe the tree as it was

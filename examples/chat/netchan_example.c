@@ -248,10 +248,14 @@ service:
         }
     }
 
-    /* clean up */
+    /* clean up: tell each connected peer the server is going away before
+     * dropping its connection, rather than leaving it to time out. */
     for (int i = 0; i < MAX_PEERS; i++) {
-        if (peers[i].active)
+        if (peers[i].active) {
+            netchan_disconnect(peers[i].conn);
+            flush_sends(fd, peers[i].conn);
             netchan_close(peers[i].conn);
+        }
     }
     close(fd);
     printf("server: shutdown\n");
@@ -385,6 +389,10 @@ run_client(const char *name)
         }
     }
 
+    /* tell the server we are leaving before dropping the socket, so it
+     * does not wait out the idle timeout to notice. */
+    netchan_disconnect(conn);
+    flush_sends(fd, conn);
     netchan_close(conn);
     close(fd);
     (void)recv_ch;

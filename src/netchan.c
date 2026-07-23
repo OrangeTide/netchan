@@ -1051,11 +1051,40 @@ netchan_open(int server)
 }
 
 void
+netchan_disconnect(struct netchan_conn *c)
+{
+    /*
+     * Queue a DISCONNECT for the peer and move to CLOSING.  netchan has no
+     * socket of its own, so the caller must run one send cycle
+     * (netchan_send_next) to actually transmit it before freeing the
+     * connection with netchan_close.  This lets a peer learn a session ended
+     * at once instead of waiting for the idle timeout to expire.
+     *
+     * Only a CONNECTED session has a peer to tell, so every other state is a
+     * quiet no-op.  That makes a second call, or a call on a handshake that
+     * never completed, harmless.
+     *
+     * The frame is best effort.  It goes out once, unreliably, and netchan
+     * does not retransmit it.  A lost datagram leaves the peer waiting out
+     * its idle timeout, which is what happens without this call anyway.
+     */
+    if (!c || c->state != NETCHAN_STATE_CONNECTED)
+        return;
+    ctrl_disconnect(c, 0);
+    c->state = NETCHAN_STATE_CLOSING;
+}
+
+void
 netchan_close(struct netchan_conn *c)
 {
     if (!c) return;
-    if (c->state == NETCHAN_STATE_CONNECTED)
-        ctrl_disconnect(c, 0);
+    /*
+     * No DISCONNECT is queued here.  This used to call ctrl_disconnect on a
+     * CONNECTED session, which wrote a frame into a buffer the next lines
+     * free, so it never reached the wire.  The dead write made close look
+     * like a graceful shutdown and cost readers of this code an idle
+     * timeout.  Call netchan_disconnect and flush before close for that.
+     */
     for (int i = 0; i < NC_MAX_CHANNELS; i++)
         chan_free(c->channels[i]);
     free(c);

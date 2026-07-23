@@ -485,7 +485,13 @@ auth_link_close(struct auth_link *al)
     if (al->timer_id >= 0)
         iox_timer_remove(al->loop, al->timer_id);
     iox_fd_remove(al->loop, al->fd);
-    if (al->conn)
+    if (al->conn) {
+        /* Tell the peer we are leaving and put the DISCONNECT on the wire
+         * before dropping the connection, so it learns the link ended at
+         * once instead of waiting out the idle timeout. */
+        netchan_disconnect(al->conn);
+        flush_out(al);
         netchan_close(al->conn);
+    }
     free(al);
 }

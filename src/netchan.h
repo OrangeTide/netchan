@@ -22,9 +22,9 @@
  * CHANGELOG.md.
  */
 #define NETCHAN_VERSION_MAJOR 0
-#define NETCHAN_VERSION_MINOR 5
+#define NETCHAN_VERSION_MINOR 6
 #define NETCHAN_VERSION_PATCH 0
-#define NETCHAN_VERSION_STRING "0.5.0"
+#define NETCHAN_VERSION_STRING "0.6.0"
 
 /** The version as one comparable integer, e.g. 0.5.0 is 500. Use it to
  *  compile against more than one release: NETCHAN_VERSION >= 500. */
@@ -122,6 +122,18 @@ void netchan_cfg_default(struct netchan_cfg *cfg);
  ****************************************************************/
 
 struct netchan_conn *netchan_open(int server);
+
+/* Queue a DISCONNECT for the peer and enter CLOSING, without freeing.  Run one
+ * netchan_send_next cycle afterward to transmit it, then netchan_close to free.
+ * A graceful shutdown that saves the peer a idle timeout.
+ *
+ * Does nothing unless the connection is CONNECTED, so calling it twice, or on
+ * a session that never finished its handshake, is safe and queues nothing.
+ *
+ * Best effort.  DISCONNECT is one unreliable control frame and netchan does
+ * not retransmit it.  If that datagram is lost, or the caller never runs the
+ * send cycle, the peer falls back to its idle timeout as before. */
+void netchan_disconnect(struct netchan_conn *c);
 void netchan_close(struct netchan_conn *c);
 void netchan_config(struct netchan_conn *c, const struct netchan_cfg *cfg);
 int netchan_state(struct netchan_conn *c);

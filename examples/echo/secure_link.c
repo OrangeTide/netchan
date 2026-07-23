@@ -345,7 +345,13 @@ secure_link_close(struct secure_link *sl)
     if (sl->timer_id >= 0)
         iox_timer_remove(sl->loop, sl->timer_id);
     iox_fd_remove(sl->loop, sl->fd);
-    if (sl->conn)
+    if (sl->conn) {
+        /* Tell the peer we are leaving and put the DISCONNECT on the wire
+         * before dropping the connection, so it learns the link ended at
+         * once instead of waiting out the idle timeout. */
+        netchan_disconnect(sl->conn);
+        flush_out(sl);
         netchan_close(sl->conn);
+    }
     free(sl);
 }
