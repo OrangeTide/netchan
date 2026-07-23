@@ -35,7 +35,10 @@ release: GitHub serves a source snapshot for it, which is what
   and the chat example now call `netchan_disconnect`, flush, then
   `netchan_close`, so a peer sees a clean shutdown at once. A program that
   copied one of these wrappers as its starting point inherited the delay; that
-  is exactly how it was found downstream.
+  is exactly how it was found downstream. The two encrypted wrappers skip the
+  disconnect when their keys are not ready, since the flush would seal nothing
+  and drop the frame. A session only reaches CONNECTED after its crypto
+  handshake, so this never skips a disconnect a live link would have sent.
 
 ## 0.5.0 - 2026-07-20
 

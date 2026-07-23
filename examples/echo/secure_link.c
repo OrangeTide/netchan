@@ -85,7 +85,8 @@ flush_out(struct secure_link *sl)
             long sn = nc_crypto_seal(&sl->crypto, buf, m,
                                      sealed, sizeof(sealed));
             if (sn < 0)
-                continue;       /* keys not ready; netchan resends later */
+                continue;       /* keys not ready; reliable data comes back
+                                 * on the next cycle, control frames do not */
             out = sealed;
             outlen = (size_t)sn;
         }
@@ -346,11 +347,19 @@ secure_link_close(struct secure_link *sl)
         iox_timer_remove(sl->loop, sl->timer_id);
     iox_fd_remove(sl->loop, sl->fd);
     if (sl->conn) {
-        /* Tell the peer we are leaving and put the DISCONNECT on the wire
+        /*
+         * Tell the peer we are leaving and put the DISCONNECT on the wire
          * before dropping the connection, so it learns the link ended at
-         * once instead of waiting out the idle timeout. */
-        netchan_disconnect(sl->conn);
-        flush_out(sl);
+         * once instead of waiting out the idle timeout.  Only when the
+         * frame can actually be sealed: flush_out drops a datagram it cannot
+         * encrypt, on the assumption netchan will offer it again later, and
+         * at close time there is no later.  A link torn down before its keys
+         * are ready has nothing to say anyway.
+         */
+        if (!sl->encrypted || nc_crypto_ready(&sl->crypto)) {
+            netchan_disconnect(sl->conn);
+            flush_out(sl);
+        }
         netchan_close(sl->conn);
     }
     free(sl);

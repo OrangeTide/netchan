@@ -106,7 +106,8 @@ flush_out(struct auth_link *al)
         long sn = nc_crypto_seal(&al->crypto, buf, m, sealed, sizeof(sealed));
 
         if (sn < 0)
-            continue;       /* keys not ready; netchan resends later */
+            continue;       /* keys not ready; reliable data comes back on
+                             * the next cycle, control frames do not */
         slen = nc_udp_to_sockaddr(&to, &ss);
         if (slen == 0)
             continue;
@@ -486,11 +487,19 @@ auth_link_close(struct auth_link *al)
         iox_timer_remove(al->loop, al->timer_id);
     iox_fd_remove(al->loop, al->fd);
     if (al->conn) {
-        /* Tell the peer we are leaving and put the DISCONNECT on the wire
+        /*
+         * Tell the peer we are leaving and put the DISCONNECT on the wire
          * before dropping the connection, so it learns the link ended at
-         * once instead of waiting out the idle timeout. */
-        netchan_disconnect(al->conn);
-        flush_out(al);
+         * once instead of waiting out the idle timeout.  Only when the
+         * frame can actually be sealed: flush_out drops a datagram it cannot
+         * encrypt, on the assumption netchan will offer it again later, and
+         * at close time there is no later.  A link torn down before its keys
+         * are ready has nothing to say anyway.
+         */
+        if (nc_crypto_ready(&al->crypto)) {
+            netchan_disconnect(al->conn);
+            flush_out(al);
+        }
         netchan_close(al->conn);
     }
     free(al);
