@@ -100,10 +100,11 @@ struct netchan_chan *ch = netchan_chan_open(c, NETCHAN_RELIABLE,
                                             NETCHAN_DIR_SEND, "state");
 netchan_chan_write(ch, msg, len);
 
-for (;;) {
-    uint8_t pkt[1500];
-    struct nc_addr to;
-    size_t n;
+uint8_t pkt[1500];
+struct nc_addr to;
+size_t n;
+
+while (running) {
     while ((n = netchan_send_next(c, pkt, sizeof pkt, &to)) > 0)
         send_it_however_you_like(pkt, n, &to);
 
@@ -118,7 +119,20 @@ for (;;) {
         if (ev.type == NETCHAN_EV_DATA)
             netchan_chan_read(ev.ch, buf, sizeof buf);
 }
+
+/* Leaving: say so, send it, then free. */
+netchan_disconnect(c);
+while ((n = netchan_send_next(c, pkt, sizeof pkt, &to)) > 0)
+    send_it_however_you_like(pkt, n, &to);
+netchan_close(c);
 ```
+
+That last block matters. `netchan_close()` frees the connection and
+tells the peer nothing, and netchan owns no socket, so the DISCONNECT that
+`netchan_disconnect()` queues goes nowhere until you send it yourself. Skip
+the flush and the peer keeps the session alive until its idle timeout
+expires, thirty seconds by default. A server handing the slot to the next
+client waits that out for nothing.
 
 Channels come in three flavours. `NETCHAN_RELIABLE` gives ordered, acked,
 retransmitted datagrams. `NETCHAN_UNRELIABLE` is fire and forget, which is
