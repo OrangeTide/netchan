@@ -28,41 +28,330 @@
 <h1>netchan</h1>
 <p class="subtitle">Multiplexed reliable and unreliable channels over an
 unreliable datagram transport, in portable C11.</p>
-<p class="version">This manual describes version @VERSION@.</p>
+<p class="version">This manual describes version @VERSION@. The wire protocol
+is stable within a minor version and no further.</p>
 
 <h2 id="intro">Introduction</h2>
-<p>Placeholder. The prose sections land in the next phase; this build proves
-the plumbing, the diagrams, the generated API reference, and the deploy.</p>
+<p>netchan carries several independent streams of messages over one unreliable
+datagram link. A channel is reliable and ordered, unreliable and unordered, or
+a reliable byte stream, and many channels share one connection and one socket.
+A game can put player input on an unreliable channel where a dropped packet is
+better than a late one, and world state on a reliable channel beside it,
+without opening a second socket or running a second protocol.</p>
+
+<p>The library is portable C11 with no dependencies beyond the C library. It
+allocates one connection object at open and nothing after that. It never calls
+a socket function, so the same object file runs over UDP on a desktop, over a
+WebSocket in a browser, and over an encrypted tunnel in between. It is built to
+be vendored: you copy the directories you want into your own tree and build
+them with your own build system.</p>
+
+<p>Some limits are deliberate. There is no congestion control, so a sender that
+outruns the link will lose packets rather than back off. There is no built-in defense against a forged source address or a traffic
+amplifier, which is the transport's and the application's concern. A connection
+id identifies a session but authenticates nothing; the <code>crypto/</code> and
+<code>auth/</code> layers exist for when identity matters.</p>
 
 <h2 id="architecture">Architecture</h2>
-<p>The connection moves through a small state machine.</p>
+<p>The protocol core never names a socket. A received datagram enters through
+<code>netchan_feed()</code> and an outgoing one leaves through
+<code>netchan_send_next()</code>, each tagged with an opaque
+<code>struct nc_addr</code> that the core copies and compares but never
+interprets. Everything below that line, the socket, the address family, the
+encryption, is the caller's to provide.</p>
+
+<p>That single seam is what lets the same core serve every transport. The layers
+stack, and each builds without the ones above it.</p>
+
+<pre>  application
+      |
+   netchan        reliable ordered delivery, channels, flow control   (src/)
+      |
+  nc_crypto       X25519 + XChaCha20-Poly1305, optional                (crypto/)
+      |
+   nc_udp         the only file that has ever heard of sockaddr        (transport/)
+      |
+  the network</pre>
+
+<p>Encryption is a decorator. <code>nc_crypto</code> seals a datagram on its way
+out and opens it on the way in, and the core never learns it happened.
+Authentication is a conversation carried on an ordinary reliable channel, so the
+core does not know that either. netchan has no login primitive; a login is
+messages the application sends like any other.</p>
+
+<p>A connection moves through a small state machine. It opens with a handshake,
+reaches <code>CONNECTED</code> where channels carry data, and ends either by an
+explicit disconnect or by the idle timeout.</p>
 <div class="diagram">@DIAGRAM:states@</div>
 
 <h2 id="protocol">Protocol overview</h2>
-<p>A session opens with a two-message handshake, carries channels, and can end
-with an explicit disconnect.</p>
+<p>A session begins with a two-message handshake. The client sends a
+<code>CONNECT_INIT</code> carrying the connection id it chose; the server replies
+with <code>CONNECT_ACCEPT</code> carrying its own id and the idle timeout it will
+enforce. Both ends are then <code>CONNECTED</code> and may open channels.</p>
+
+<p>A channel opens with a <code>CHANNEL_OPEN</code> frame that names its type and
+its content type, a short string that labels what the channel carries. The peer
+answers with a <code>WINDOW_UPDATE</code> that grants send credit. Data then
+flows as <code>DATA</code> frames, acknowledged by <code>ACK</code> on a reliable
+channel and left unacknowledged on an unreliable one. When a side leaves, a
+<code>DISCONNECT</code> frame ends the session at once rather than leaving the
+peer to notice the silence when the idle timer expires.</p>
+
 <div class="diagram">@DIAGRAM:handshake@</div>
 
+<p>Several frames travel in one datagram. A datagram is a small header followed
+by a run of frames, so a single packet can carry a channel's data, an
+acknowledgement for another channel, and a keepalive at once. The
+<a href="#reference">protocol reference</a> lists the header and every frame
+type.</p>
+
 <h2 id="guide-udp">Guide: UDP peer to peer</h2>
-<p>Placeholder.</p>
+<p>The application owns the socket. netchan tells it what to send and when to
+ask again; moving the bytes is the application's job. The shape of every program
+is the same loop: drain what netchan wants to send, wait for the socket, feed
+what arrives, then drain the events.</p>
+
+<pre><code>struct netchan_conn *c = netchan_open(0);   /* 0 = client, 1 = server */
+netchan_connect(c, &server_addr);
+
+struct netchan_chan *ch = netchan_chan_open(c, NETCHAN_RELIABLE,
+                                            NETCHAN_DIR_SEND, "state");
+netchan_chan_write(ch, msg, len);
+
+for (;;) {
+    uint8_t pkt[1500];
+    struct nc_addr to;
+    size_t n;
+    while ((n = netchan_send_next(c, pkt, sizeof pkt, &to)) &gt; 0)
+        sendto_however_you_like(pkt, n, &to);
+
+    int wait_ms = netchan_service(c, now_ms());
+    /* wait for the socket to be readable, up to wait_ms */
+
+    if (got_a_datagram)
+        netchan_feed(c, rx, rxlen, &from);
+
+    struct netchan_event ev;
+    while (netchan_poll(c, &ev))
+        if (ev.type == NETCHAN_EV_DATA)
+            netchan_chan_read(ev.ch, buf, sizeof buf);
+}</code></pre>
+
+<p><code>netchan_service()</code> returns the milliseconds until it next needs to
+run, so a poll loop can sleep exactly that long. It fires retransmit timers,
+sends a keepalive on an idle connection, and raises the idle-timeout disconnect
+when a peer goes silent. Calling it too often is harmless; not calling it at all
+stalls retransmission.</p>
+
+<p>To leave cleanly, disconnect, flush the frame that queues, then close.
+<code>netchan_close()</code> frees the connection and tells the peer nothing, and
+netchan owns no socket, so the <code>DISCONNECT</code> that
+<code>netchan_disconnect()</code> queues goes nowhere until you send it
+yourself.</p>
+
+<pre><code>netchan_disconnect(c);
+while ((n = netchan_send_next(c, pkt, sizeof pkt, &to)) &gt; 0)
+    sendto_however_you_like(pkt, n, &to);
+netchan_close(c);</code></pre>
 
 <h2 id="guide-cs">Guide: client and server</h2>
-<p>Placeholder.</p>
+<p>The two ends differ only at open and accept. A server opens with
+<code>netchan_open(1)</code> and, on the first datagram from a new peer, calls
+<code>netchan_accept()</code> to complete the handshake. A server that talks to
+many clients keeps one <code>struct netchan_conn</code> per peer, routing an
+incoming datagram to the right one; <code>netchan_peek_id()</code> reads the
+connection id out of a raw packet without parsing it, which is how a dispatcher
+picks the connection before feeding the bytes in.</p>
+
+<p>A channel carries a content type set when it opens, and the peer reads it back
+with <code>netchan_chan_content_type()</code>. Use it to tell channels apart when
+one connection carries several. A server that offers a "chat" channel and a
+"presence" channel decides which handler a datagram belongs to from that string,
+before it looks at the payload.</p>
+
+<pre><code>case NETCHAN_EV_CHAN_OPEN:
+    if (strcmp(netchan_chan_content_type(ev.ch), "chat") == 0)
+        peer-&gt;chat = ev.ch;
+    break;</code></pre>
+
+<p>One caution the examples learned the hard way: do not free a connection from
+inside its own poll loop. Handling <code>NETCHAN_EV_DISCONNECTED</code> by calling
+<code>netchan_close()</code> and then looping back to <code>netchan_poll()</code>
+reads a freed pointer. Note that the slot is gone and break out of the loop
+first.</p>
 
 <h2 id="guide-auth">Guide: authentication</h2>
-<p>Placeholder.</p>
+<p>Two independent layers sit above the core. Encryption comes first, then a
+login carried as ordinary messages.</p>
+
+<p><code>nc_crypto</code> is a transport decorator. Before netchan speaks, the two
+ends run an X25519 handshake; once <code>nc_crypto_ready()</code> reports the keys
+are set, every datagram is sealed with XChaCha20-Poly1305 on the way out and
+opened on the way in. The crypto handshake always finishes before netchan's own,
+so even the <code>CONNECT_INIT</code> travels sealed. The core is never aware of
+any of it.</p>
+
+<pre><code>struct nc_crypto cr;
+nc_crypto_init(&cr, /*role=*/0, &(struct nc_crypto_cfg){0});
+
+/* until nc_crypto_ready(), send nc_crypto_handshake_packet() output */
+long s = nc_crypto_seal(&cr, pkt, len, sealed, sizeof sealed);
+long o = nc_crypto_open(&cr, rx, rxlen, plain, sizeof plain);
+if (o &gt; 0) netchan_feed(c, plain, o, &from);</code></pre>
+
+<p>Give the responder a long-term identity key and the handshake authenticates
+it as well: a second Diffie-Hellman folds the identity key into the derivation,
+so the first packet that opens is proof the peer holds the key, with no signature
+on the wire and no extra round trip. Deciding whether to trust a presented key is
+deliberately not this layer's job; a <code>verify_peer</code> callback answers
+that, and comparing a key against one recorded earlier is trust on first use, the
+same model ssh uses for host keys.</p>
+
+<p><code>nc_auth</code> is the login on top, a pair of state machines with no
+socket and no netchan in them. Messages go in through <code>nc_auth_feed()</code>
+and come out for the caller to carry on a reliable channel. <code>keystore</code>
+reads and writes the on-disk formats, <code>known_hosts</code>,
+<code>host_key</code>, <code>authorized_keys</code>, <code>passwd</code>, and the
+client key file, all plain text an operator can read and edit. The client's
+signature covers the <code>nc_crypto</code> session id, so a signature captured by
+one server cannot be replayed at another. <code>examples/auth/</code> wires the
+whole stack together.</p>
 
 <h2 id="guide-extend">Guide: extending the protocol</h2>
-<p>Placeholder.</p>
+<p>Because the core names no socket, a new transport is just a pair of functions
+that move bytes. Seal or frame an outgoing datagram from
+<code>netchan_send_next()</code> however the medium requires, and hand what
+arrives to <code>netchan_feed()</code>. The <code>nc_ws</code> transport does
+exactly this for browsers: it speaks the RFC 6455 WebSocket framing so a browser
+client reaches an unmodified UDP server. <code>ws_gateway</code> relays between
+the two, presenting each browser as an ordinary netchan peer.</p>
+
+<p>The address a datagram carries is opaque to the core, so a transport is free
+to define <code>struct nc_addr</code> however it likes, as long as it packs the
+bytes on the way in and unpacks them on the way out. A transport that has no
+meaningful source address, such as a single fixed tunnel, passes
+<code>NULL</code> and the core copes.</p>
+
+<p>To carry structured messages rather than raw bytes, use the encoding layer
+below. It needs no change to the core either.</p>
 
 <h2 id="encoding">Message encoding</h2>
-<p>Placeholder. Covers topics, the microser IDL, and the dispatch table.</p>
+<p>A channel moves opaque bytes. What those bytes mean is the application's
+choice, and <code>idl/</code> is one answer: microser, a tagged wire format with
+a small IDL compiler.</p>
+
+<p>A channel's content type is a topic, in the sense MQTT uses the word. It is
+set when the channel opens and read back from the peer's
+<code>CHANNEL_OPEN</code>, so a program routes a channel by its topic before it
+reads a byte of payload. A topic can carry one message type, or many.</p>
+
+<p>Describe a message in an <code>.idl</code> file and the compiler emits a C
+struct and an encode and decode function for it. A field is a type, a name, and a
+number from 1 to 31.</p>
+
+<pre><code>message PlayerInput
+    uint32 seq   = 1
+    uint8  input = 2
+end</code></pre>
+
+<p>The wire format is tagged, so a reader steps over a field it does not know: a
+newer sender may add fields and an older reader still parses the ones it
+understands. A <code>bytes</code> or <code>string</code> field decodes zero-copy,
+as a pointer into the caller's buffer and a length, so a large payload does not
+enlarge the struct. Keeping message structs small matters, because a message that
+exceeds the path limit is fragmented, and fragmentation is the first thing to
+cost you throughput.</p>
+
+<p>When several message types share one topic, a <code>dispatch</code> block
+multiplexes them on a leading tag byte. Each datagram becomes
+<code>&lt;tag&gt;&lt;body&gt;</code>.</p>
+
+<pre><code>dispatch Chat
+    1 Join
+    2 Say
+    3 Leave
+end</code></pre>
+
+<p>From that block the compiler generates a tag constant per message, an encode
+helper that prefixes the tag, and a decode entry point that reads the tag into a
+tagged union. The receiver reads a datagram, decodes, and switches on the type,
+which mirrors how it already polls <code>netchan_event</code>.</p>
+
+<pre><code>struct chat_msg m;
+chat_decode(buf, len, &m);
+switch (m.type) {
+case CHAT_JOIN:  /* m.u.join  */  break;
+case CHAT_SAY:   /* m.u.say   */  break;
+case CHAT_LEAVE: /* m.u.leave */  break;
+default:         /* CHAT_NONE: a type this build predates; skipped */ break;
+}</code></pre>
+
+<p>An unknown tag is not an error. The body carries its own length, so the
+decoder steps over a message type it does not recognize and reports the type as
+<code>CHAT_NONE</code>, the same forward compatibility the field level gives you.
+Tag numbers can follow a hierarchy, for instance one range for control and
+another for data, since a tag is a full byte. <code>examples/typed/</code> shows
+the whole path end to end. Generation runs at build time and needs a POSIX
+<code>awk</code>; a project that would rather not run it can copy
+<code>idl/microser.h</code> and write the structs by hand.</p>
 
 <h2 id="reference">Protocol reference</h2>
-<p>Placeholder.</p>
+<p>Every datagram starts with a header. The first byte is a flag set. A client's
+opening packet, before it knows the server's id, uses the short init header; every
+other packet uses the full header with a packet number.</p>
+
+<table>
+<tr><th>Header</th><th>Bytes</th><th>Layout</th></tr>
+<tr><td>init</td><td>5</td><td>flags(1), connection id(4)</td></tr>
+<tr><td>full</td><td>7</td><td>flags(1), connection id(4), packet number(2)</td></tr>
+</table>
+
+<p>The header is followed by one or more frames. Each frame starts with a
+one-byte type.</p>
+
+<table>
+<tr><th>Frame</th><th>Type</th><th>Carries</th></tr>
+<tr><td><code>PADDING</code></td><td>0x00</td><td>nothing; pads a datagram</td></tr>
+<tr><td><code>CONNECT_INIT</code></td><td>0x01</td><td>client id, opens a session</td></tr>
+<tr><td><code>CONNECT_ACCEPT</code></td><td>0x02</td><td>server id and idle timeout</td></tr>
+<tr><td><code>CONNECT_REDIRECT</code></td><td>0x03</td><td>an address to retry against</td></tr>
+<tr><td><code>DISCONNECT</code></td><td>0x04</td><td>ends the session</td></tr>
+<tr><td><code>PING</code></td><td>0x05</td><td>keepalive probe</td></tr>
+<tr><td><code>PONG</code></td><td>0x06</td><td>keepalive reply</td></tr>
+<tr><td><code>CHANNEL_OPEN</code></td><td>0x07</td><td>channel type and content type</td></tr>
+<tr><td><code>CHANNEL_CLOSE</code></td><td>0x08</td><td>closes a channel</td></tr>
+<tr><td><code>DATA</code></td><td>0x09</td><td>channel payload</td></tr>
+<tr><td><code>ACK</code></td><td>0x0A</td><td>acknowledges reliable data</td></tr>
+<tr><td><code>WINDOW_UPDATE</code></td><td>0x0B</td><td>grants send credit</td></tr>
+</table>
+
+<p>A reliable channel retransmits an unacknowledged message with an exponential
+backoff, from the retransmit interval up to a ceiling, and gives up after a fixed
+number of attempts, at which point the channel is reported closed. Flow control is
+a credit window: a receiver grants bytes with <code>WINDOW_UPDATE</code> and a
+sender may not exceed the outstanding grant. A message larger than the path can
+hold is split into fragments and reassembled at the far end.</p>
+
+<p>A connection sends a <code>PING</code> after a few seconds of silence and
+treats the session as dead if nothing arrives before the idle timeout. The
+defaults below come from <code>netchan_cfg_default()</code> and can be changed per
+connection with <code>netchan_config()</code>.</p>
+
+<table>
+<tr><th>Setting</th><th>Default</th><th>Meaning</th></tr>
+<tr><td>MTU</td><td>1200 bytes</td><td>largest datagram netchan will build</td></tr>
+<tr><td>channel window</td><td>65536 bytes</td><td>initial receive credit per channel</td></tr>
+<tr><td>idle timeout</td><td>30000 ms</td><td>silence before a session is declared dead</td></tr>
+<tr><td>retransmit</td><td>100 ms</td><td>base interval before the first resend</td></tr>
+<tr><td>keepalive</td><td>5000 ms</td><td>silence before a PING is sent</td></tr>
+<tr><td>channels</td><td>16</td><td>concurrent channels per connection</td></tr>
+<tr><td>message</td><td>2048 bytes</td><td>largest message a channel will buffer</td></tr>
+</table>
 
 <h2 id="api">API reference</h2>
-<p>Generated from <code>src/netchan.h</code>, so it cannot drift from the code.</p>
+<p>Generated from <code>src/netchan.h</code>, so it cannot drift from the code.
+The full type and constant definitions are in that header.</p>
 @API@
 
 </main>
