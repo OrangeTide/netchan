@@ -1,0 +1,46 @@
+# microser_proto.idl -- exercises every microser feature for the test.
+#
+# One message with a field of every scalar wire type plus a bytes and a
+# string, one message built only from a discriminated union, and an enum
+# that names the union's discriminant. The test round-trips all of them and
+# checks that an older reader skips a field a newer writer added.
+
+enum Kind
+    Ping = 1
+    Data = 2
+    Bye  = 3
+end
+
+# every scalar type, a zero-copy bytes field, and a zero-copy string
+message Everything
+    uint8  u8v  = 1
+    int8   i8v  = 2
+    uint16 u16v = 3
+    int16  i16v = 4
+    uint32 u32v = 5
+    int32  i32v = 6
+    uint64 u64v = 7
+    int64  i64v = 8
+    bytes  blob = 9
+    string name = 10
+end
+
+# a discriminated union: the reader learns which variant is present from the
+# Kind discriminant, and unset variants decode to zero
+message Event
+    uint32 at = 1
+    case Kind kind = 2
+        Ping:
+            uint16 seq = 3
+        Data:
+            uint32 length = 4
+            bytes  payload = 5
+        Bye:
+            uint16 reason = 6
+    end
+end
+
+# the truncation edge: a single field at the maximum field number
+message Edge
+    uint32 top = 31
+end

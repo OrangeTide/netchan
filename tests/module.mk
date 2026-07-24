@@ -10,6 +10,30 @@
 
 ROOT := $(dir $(lastword $(MAKEFILE_LIST)))
 
+# --- microser: the IDL codecs, compiled from microser_proto.idl at build ---
+# Socketless, so it builds and runs under wasm like the other core tests.
+# The .idl is the only checked-in source; the .c/.h are generated into
+# BUILDDIR. Two rules rather than one grouped `&:` target, so the header gets
+# its own recipe and macOS's GNU Make 3.81 rebuilds consumers when it changes.
+EXECUTABLES += microser_test
+microser_test_DIR := $(ROOT)
+microser_test_SRCS = microser_test.c
+microser_test_GENERATED_SRCS = microser_proto.c
+microser_test_GENERATED_HDRS = microser_proto.h
+microser_test_CPPFLAGS = $(NETCHAN_IDL_INC)
+microser_test_LDFLAGS.Emscripten = -sWASM_ASYNC_COMPILATION=0
+
+$(BUILDDIR)/$(microser_test_DIR)microser_proto.c : \
+		$(microser_test_DIR)microser_proto.idl $(MICROSER_GEN)
+	$(MICROSER_GEN) $< $(BUILDDIR)/$(microser_test_DIR)microser_proto
+$(BUILDDIR)/$(microser_test_DIR)microser_proto.h : \
+		$(BUILDDIR)/$(microser_test_DIR)microser_proto.c ; @touch -c $@
+
+define microser_test_TESTCMD
+$(microser_test_RUN)
+endef
+TEST_TARGETS += microser_test
+
 # --- protocol core: connect, channels, loss, reorder, flow control ---
 EXECUTABLES += netchan_test
 netchan_test_DIR := $(ROOT)

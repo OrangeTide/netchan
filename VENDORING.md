@@ -61,6 +61,7 @@ required.
 | a browser gateway | add `transport/nc_ws.*` | nothing |
 | encryption | add `crypto/`, `third_party/` | monocypher, `-lbcrypt` on Windows |
 | a login | add `auth/` | monocypher, `-lbcrypt` on Windows |
+| typed messages | add `idl/` | a POSIX `awk` at build time |
 
 Every layer here builds on POSIX and on Windows. The core is the only one
 that adds nothing to the link line on either, which is deliberate: it draws
@@ -78,10 +79,18 @@ habit.
 ## Fitting It to Your Build
 
 Every source file includes its own headers by plain name, so the only thing a
-host build system has to supply is `-I` for each directory it took. There are
-no generated files and no configure step. The platform differences that do
-exist are selected by the compiler's own predefined macros, `_WIN32` and the
-BSD and Apple ones, so nothing has to be detected or configured by the build.
+host build system has to supply is `-I` for each directory it took. There is no
+configure step, and the platform differences that do exist are selected by the
+compiler's own predefined macros, `_WIN32` and the BSD and Apple ones, so
+nothing has to be detected or configured by the build.
+
+The one layer that generates a file is `idl/`. Its `microser-gen.sh` compiles
+a `.idl` into a `.c` and `.h` at build time, which needs a POSIX `awk` on the
+build host but nothing at run time and nothing on the link line. The generator
+runs on the host for whatever target you are compiling, so cross-compiling and
+building for wasm both work unchanged. If you would rather not run it, copy
+`idl/microser.h` alone and write the message structs by hand against it; the
+header is the whole runtime and the generator only saves the typing.
 
 If your project also uses modular-make, each directory already carries a
 `module.mk` and you can add them to your `SUBDIRS` unchanged. The
