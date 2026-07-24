@@ -165,18 +165,21 @@ state == "case" && $1 == "end" { state = "msg"; next }
 state == "var" && $1 == "end" { state = "msg"; next }
 
 # variant field
+#
+# Every variant field becomes its own struct member and its own decode case.
+# The struct is flat, not a union of per-variant structs, so two variants
+# cannot share a field number: the shared member would take one name and type,
+# and a second variant would encode a member that does not exist. The
+# tag-uniqueness check in END enforces that. A message that sets only the
+# fields of the active variant still decodes cleanly, since the rest stay zero.
+# (No apostrophes here: this awk program lives inside shell single quotes.)
 state == "var" {
     vnf[nm, vi]++; vfi = vnf[nm, vi]
     vf_type[nm, vi, vfi] = $1
     vf_name[nm, vi, vfi] = $2
     vf_tag[nm, vi, vfi] = $4 + 0
-    tag = $4 + 0
-    key = nm SUBSEP tag
-    if (!(key in tag_seen)) {
-        tag_seen[key] = 1
-        maf[nm]++; k = maf[nm]
-        af_type[nm, k] = $1; af_name[nm, k] = $2; af_tag[nm, k] = tag
-    }
+    maf[nm]++; k = maf[nm]
+    af_type[nm, k] = $1; af_name[nm, k] = $2; af_tag[nm, k] = $4 + 0
     next
 }
 
@@ -214,14 +217,18 @@ END {
                 fail(sprintf("message %s: field \"%s\" has number %d, " \
                      "outside 1 to 31", mn[i], af_name[i, j], af_tag[i, j]))
         }
-        # Variants may share a field number, since the discriminant says
-        # which one is on the wire. Two plain fields may not.
-        for (j = 1; j <= mrf[i]; j++) {
-            for (k = j + 1; k <= mrf[i]; k++) {
-                if (rf_tag[i, j] == rf_tag[i, k])
+        # af[] holds every field of the message: the plain fields, the
+        # discriminant, and every variant field. It is exactly what becomes
+        # the struct members and the decode switch, so every field number must
+        # be unique across the whole message, variants included. A duplicate
+        # would be a repeated struct member or a duplicate case label in the
+        # generated C. Reject it here with a clean message.
+        for (j = 1; j <= maf[i]; j++) {
+            for (k = j + 1; k <= maf[i]; k++) {
+                if (af_tag[i, j] == af_tag[i, k])
                     fail(sprintf("message %s: \"%s\" and \"%s\" share field " \
-                         "number %d", mn[i], rf_name[i, j], rf_name[i, k],
-                         rf_tag[i, j]))
+                         "number %d", mn[i], af_name[i, j], af_name[i, k],
+                         af_tag[i, j]))
             }
         }
     }
