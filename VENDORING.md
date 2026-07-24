@@ -84,9 +84,10 @@ configure step, and the platform differences that do exist are selected by the
 compiler's own predefined macros, `_WIN32` and the BSD and Apple ones, so
 nothing has to be detected or configured by the build.
 
-The one layer that generates a file is `idl/`. Its `microser-gen.sh` compiles
-a `.idl` into a `.c` and `.h` at build time, which needs a POSIX `awk` on the
-build host but nothing at run time and nothing on the link line. The generator
+The one layer that generates a file is `idl/`. Its `microser-gen.sh`, a thin
+wrapper around `microser-gen.awk` beside it, compiles a `.idl` into a `.c` and
+a `.h` at build time. Take both files. It needs a POSIX `awk` on the build
+host but nothing at run time and nothing on the link line. The generator
 runs on the host for whatever target you are compiling, so cross-compiling and
 building for wasm both work unchanged. If you would rather not run it, copy
 `idl/microser.h` alone and write the message structs by hand against it; the

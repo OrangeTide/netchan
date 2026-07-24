@@ -24,7 +24,7 @@ microser_test_CPPFLAGS = $(NETCHAN_IDL_INC)
 microser_test_LDFLAGS.Emscripten = -sWASM_ASYNC_COMPILATION=0
 
 $(BUILDDIR)/$(microser_test_DIR)microser_proto.c : \
-		$(microser_test_DIR)microser_proto.idl $(MICROSER_GEN)
+		$(microser_test_DIR)microser_proto.idl $(MICROSER_GEN_DEPS)
 	$(MICROSER_GEN) $< $(BUILDDIR)/$(microser_test_DIR)microser_proto
 $(BUILDDIR)/$(microser_test_DIR)microser_proto.h : \
 		$(BUILDDIR)/$(microser_test_DIR)microser_proto.c ; @touch -c $@

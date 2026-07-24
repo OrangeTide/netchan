@@ -13,7 +13,7 @@
 #   myapp_CPPFLAGS = $(NETCHAN_IDL_INC)
 #   myapp_GENERATED_SRCS = proto.c
 #   $(BUILDDIR)/$(myapp_DIR)proto.c $(BUILDDIR)/$(myapp_DIR)proto.h &: \
-#   		$(myapp_DIR)proto.idl $(MICROSER_GEN)
+#   		$(myapp_DIR)proto.idl $(MICROSER_GEN_DEPS)
 #   	$(MICROSER_GEN) $< $(BUILDDIR)/$(myapp_DIR)proto
 #
 # Depends on nothing but the C library, and needs a POSIX awk at build time.
@@ -24,6 +24,9 @@ ROOT := $(dir $(lastword $(MAKEFILE_LIST)))
 # so both the generated file and anything using it need this on the path.
 NETCHAN_IDL_INC := -I$(ROOT)
 
-# The IDL compiler. Named here so a codegen rule can depend on it and rerun
-# when the compiler itself changes, not only when the .idl does.
+# The IDL compiler. MICROSER_GEN is the command; MICROSER_GEN_DEPS is what a
+# codegen rule lists as a prerequisite so it reruns when the compiler changes,
+# not only when the .idl does. The .sh is a thin wrapper and the .awk is the
+# compiler proper, so both belong in the dependency.
 MICROSER_GEN := $(ROOT)microser-gen.sh
+MICROSER_GEN_DEPS := $(ROOT)microser-gen.sh $(ROOT)microser-gen.awk

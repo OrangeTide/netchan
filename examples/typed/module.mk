@@ -19,7 +19,7 @@ typed_example_LIBS = netchan_core
 # Two recipes, not a grouped `&:` target, so macOS's GNU Make 3.81 rebuilds a
 # consumer when only the header changes. See tests/module.mk for the same.
 $(BUILDDIR)/$(typed_example_DIR)chat.c : \
-		$(typed_example_DIR)chat.idl $(MICROSER_GEN)
+		$(typed_example_DIR)chat.idl $(MICROSER_GEN_DEPS)
 	$(MICROSER_GEN) $< $(BUILDDIR)/$(typed_example_DIR)chat
 $(BUILDDIR)/$(typed_example_DIR)chat.h : \
 		$(BUILDDIR)/$(typed_example_DIR)chat.c ; @touch -c $@
