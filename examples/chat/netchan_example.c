@@ -187,7 +187,8 @@ service:
             flush_sends(fd, peers[i].conn);
 
             struct netchan_event ev;
-            while (netchan_poll(peers[i].conn, &ev)) {
+            int gone = 0;       /* the slot was closed inside the loop */
+            while (!gone && netchan_poll(peers[i].conn, &ev)) {
                 switch (ev.type) {
                 case NETCHAN_EV_CONNECTED:
                     printf("server: peer %d connected\n", i);
@@ -234,6 +235,10 @@ service:
                            i, peers[i].name);
                     netchan_close(peers[i].conn);
                     memset(&peers[i], 0, sizeof(peers[i]));
+                    /* The connection is freed and the slot is zeroed, so
+                     * there is nothing left to poll and the loop condition
+                     * would read the NULL it just wrote. */
+                    gone = 1;
                     break;
                 }
             }
