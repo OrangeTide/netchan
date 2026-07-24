@@ -1,0 +1,58 @@
+name: Manual
+
+# Builds the manual on every push and pull request so a broken page or a stale
+# API symbol fails CI. Only a push to main deploys; a pull request builds and
+# uploads nothing, so a fork cannot publish.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time. Do not cancel a run in flight: a half-finished deploy
+# would leave the live site inconsistent, so let it complete and queue the next.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build the manual
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install the diagram renderers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mscgen graphviz
+
+      - name: Build
+        run: docs/build.sh "$GITHUB_WORKSPACE/_site"
+
+      - name: Upload the page
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    name: deploy to Pages
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deploy
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>netchan manual</title>
+<style>
+@STYLE@
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc">
+<strong>netchan @VERSION@</strong>
+<a href="#intro">Introduction</a>
+<a href="#architecture">Architecture</a>
+<a href="#protocol">Protocol overview</a>
+<a href="#guide-udp">Guide: UDP peer to peer</a>
+<a href="#guide-cs">Guide: client and server</a>
+<a href="#guide-auth">Guide: authentication</a>
+<a href="#guide-extend">Guide: extending</a>
+<a href="#encoding">Message encoding</a>
+<a href="#reference">Protocol reference</a>
+<a href="#api">API reference</a>
+</nav>
+<main>
+
+<h1>netchan</h1>
+<p class="subtitle">Multiplexed reliable and unreliable channels over an
+unreliable datagram transport, in portable C11.</p>
+<p class="version">This manual describes version @VERSION@.</p>
+
+<h2 id="intro">Introduction</h2>
+<p>Placeholder. The prose sections land in the next phase; this build proves
+the plumbing, the diagrams, the generated API reference, and the deploy.</p>
+
+<h2 id="architecture">Architecture</h2>
+<p>The connection moves through a small state machine.</p>
+<div class="diagram">@DIAGRAM:states@</div>
+
+<h2 id="protocol">Protocol overview</h2>
+<p>A session opens with a two-message handshake, carries channels, and can end
+with an explicit disconnect.</p>
+<div class="diagram">@DIAGRAM:handshake@</div>
+
+<h2 id="guide-udp">Guide: UDP peer to peer</h2>
+<p>Placeholder.</p>
+
+<h2 id="guide-cs">Guide: client and server</h2>
+<p>Placeholder.</p>
+
+<h2 id="guide-auth">Guide: authentication</h2>
+<p>Placeholder.</p>
+
+<h2 id="guide-extend">Guide: extending the protocol</h2>
+<p>Placeholder.</p>
+
+<h2 id="encoding">Message encoding</h2>
+<p>Placeholder. Covers topics, the microser IDL, and the dispatch table.</p>
+
+<h2 id="reference">Protocol reference</h2>
+<p>Placeholder.</p>
+
+<h2 id="api">API reference</h2>
+<p>Generated from <code>src/netchan.h</code>, so it cannot drift from the code.</p>
+@API@
+
+</main>
+</div>
+</body>
+</html>

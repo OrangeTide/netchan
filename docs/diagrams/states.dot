@@ -1,0 +1,17 @@
+// The netchan connection state machine.
+// Rendered by graphviz dot; see docs/build.sh.
+
+digraph states {
+    rankdir=LR;
+    bgcolor="transparent";
+    node [shape=box, fontname="Helvetica", fontsize=11,
+          style=rounded, margin="0.12,0.06"];
+    edge [fontname="Helvetica", fontsize=10];
+
+    NEW        -> CONNECTING [label="connect / accept"];
+    CONNECTING -> CONNECTED  [label="CONNECT_ACCEPT"];
+    CONNECTED  -> CLOSING    [label="netchan_disconnect"];
+    CLOSING    -> CLOSED     [label="peer DISCONNECT"];
+    CONNECTED  -> CLOSED     [label="idle timeout /\npeer DISCONNECT"];
+    CONNECTING -> CLOSED     [label="connect timeout"];
+}

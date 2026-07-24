@@ -1,6 +1,7 @@
 _build
 _dos
 _out
+_site
 compile_commands.json
 
 # binaries from Makefile.simple

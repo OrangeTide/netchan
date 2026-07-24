@@ -1,0 +1,22 @@
+# The netchan connection handshake and a graceful close.
+# Rendered by mscgen; see docs/build.sh.
+
+msc {
+    hscale = "1.6";
+
+    c [label="Client"],
+    s [label="Server"];
+
+    c => s [label="CONNECT_INIT (client id)"];
+    s => c [label="CONNECT_ACCEPT (server id, idle timeout)"];
+    --- [label="both CONNECTED"];
+
+    c => s [label="CHANNEL_OPEN (type, content_type)"];
+    s => c [label="WINDOW_UPDATE"];
+    c => s [label="DATA"];
+    s => c [label="ACK"];
+
+    --- [label="client leaves gracefully"];
+    c => s [label="DISCONNECT"];
+    c => c [label="netchan_close"];
+}
