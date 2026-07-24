@@ -236,6 +236,50 @@ test_forward_compat_skip(void)
     PASS();
 }
 
+static void
+test_dispatch_round_trip(void)
+{
+    TEST("dispatch encodes a tag and decodes the right variant");
+
+    uint8_t buf[128];
+    struct proto_msg m;
+    int n;
+
+    struct edge e = { .top = 0xabcd1234 };
+    n = proto_encode_edge(buf, sizeof(buf), &e);
+    CHECK(n > 0, "encode failed");
+    CHECK(buf[0] == PROTO_EDGE, "wrong tag byte on the wire");
+    CHECK(proto_msg_type(buf, n) == PROTO_EDGE, "msg_type read the wrong tag");
+    CHECK(proto_decode(buf, n, &m) == n, "decode did not consume the frame");
+    CHECK(m.type == PROTO_EDGE, "decoded the wrong type");
+    CHECK(m.u.edge.top == e.top, "payload lost through dispatch");
+
+    struct event ev = { .at = 5, .kind = KIND_PING, .seq = 99 };
+    n = proto_encode_event(buf, sizeof(buf), &ev);
+    CHECK(n > 0 && proto_decode(buf, n, &m) == n, "Event through dispatch");
+    CHECK(m.type == PROTO_EVENT && m.u.event.seq == 99, "Event payload wrong");
+    PASS();
+}
+
+static void
+test_dispatch_unknown_tag(void)
+{
+    TEST("an unknown message type is skipped, not an error");
+
+    /* A tag this build has no case for, over an empty (2-byte) body. A newer
+     * peer sending a message type we predate must not wedge the reader. */
+    uint8_t frame[3] = { 200, 0x00, 0x00 };
+    struct proto_msg m;
+
+    CHECK(proto_decode(frame, sizeof(frame), &m) == 3,
+          "unknown message not consumed by its length prefix");
+    CHECK(m.type == PROTO_NONE, "unknown tag did not report PROTO_NONE");
+
+    /* A tag with no body at all is malformed. */
+    CHECK(proto_decode(frame, 1, &m) == -1, "a bodiless frame was accepted");
+    PASS();
+}
+
 int
 main(void)
 {
@@ -250,6 +294,8 @@ main(void)
     test_write_overflow();
     test_read_truncated();
     test_forward_compat_skip();
+    test_dispatch_round_trip();
+    test_dispatch_unknown_tag();
 
     printf("\n%d/%d tests passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

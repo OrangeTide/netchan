@@ -1,0 +1,23 @@
+# chat.idl -- the typed_example message set.
+#
+# Three messages share one channel, told apart by the leading tag byte the
+# dispatch block assigns. The channel's content_type names the topic ("chat");
+# the tag byte names the message within it.
+
+message Join
+    string name = 1
+end
+
+message Say
+    string text = 1
+end
+
+message Leave
+    uint16 reason = 1
+end
+
+dispatch Chat
+    1 Join
+    2 Say
+    3 Leave
+end

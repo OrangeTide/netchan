@@ -180,6 +180,26 @@ state == "var" {
     next
 }
 
+# --- dispatch: a set of messages multiplexed on a leading tag byte ---
+# Each line inside the block is "<tag> <MessageName>". The generator emits a
+# tagged-union struct, a per-message encode helper that prefixes the tag, and
+# a decode entry point that reads the tag and fills the union.
+$1 == "dispatch" {
+    nd++
+    dn[nd] = $2
+    ndm[nd] = 0
+    state = "dispatch"
+    next
+}
+state == "dispatch" && $1 == "end" { state = ""; next }
+state == "dispatch" {
+    ndm[nd]++
+    k = ndm[nd]
+    dm_tag[nd, k] = $1 + 0
+    dm_msg[nd, k] = $2
+    next
+}
+
 # --- code generation ---
 END {
     # Check before writing anything, so a rejected .idl leaves no half
@@ -203,6 +223,26 @@ END {
                          "number %d", mn[i], rf_name[i, j], rf_name[i, k],
                          rf_tag[i, j]))
             }
+        }
+    }
+    for (di = 1; di <= nd; di++) {
+        for (dk = 1; dk <= ndm[di]; dk++) {
+            found = 0
+            for (mi = 1; mi <= nm; mi++)
+                if (mn[mi] == dm_msg[di, dk]) found = 1
+            if (!found)
+                fail(sprintf("dispatch %s: no message named \"%s\"",
+                     dn[di], dm_msg[di, dk]))
+            # Tag 0 is reserved for an unrecognised message, and a tag is one
+            # byte on the wire.
+            if (dm_tag[di, dk] < 1 || dm_tag[di, dk] > 255)
+                fail(sprintf("dispatch %s: \"%s\" has tag %d, outside 1 to 255",
+                     dn[di], dm_msg[di, dk], dm_tag[di, dk]))
+            for (dk2 = dk + 1; dk2 <= ndm[di]; dk2++)
+                if (dm_tag[di, dk] == dm_tag[di, dk2])
+                    fail(sprintf("dispatch %s: \"%s\" and \"%s\" share tag %d",
+                         dn[di], dm_msg[di, dk], dm_msg[di, dk2],
+                         dm_tag[di, dk]))
         }
     }
     if (errors > 0)
@@ -250,6 +290,32 @@ END {
         printf "};\n\n" > h
         printf "int %s_encode(const struct %s *msg, uint8_t *buf, int len);\n", sn, sn > h
         printf "int %s_decode(struct %s *msg, const uint8_t *buf, int len);\n\n", sn, sn > h
+    }
+
+    for (i = 1; i <= nd; i++) {
+        dsn = to_snake(dn[i]); dun = toupper(dsn)
+        printf "/* dispatch %s: <tag byte><message body> on one channel. */\n", dn[i] > h
+        printf "#define %s_NONE 0\n", dun > h
+        for (k = 1; k <= ndm[i]; k++) {
+            msn = to_snake(dm_msg[i, k])
+            printf "#define %s_%s %d\n", dun, toupper(msn), dm_tag[i, k] > h
+        }
+        printf "\n" > h
+        printf "struct %s_msg {\n", dsn > h
+        printf "    int type;    /* one of the %s_* tags, or %s_NONE */\n", dun, dun > h
+        printf "    union {\n" > h
+        for (k = 1; k <= ndm[i]; k++) {
+            msn = to_snake(dm_msg[i, k])
+            printf "        struct %s %s;\n", msn, msn > h
+        }
+        printf "    } u;\n" > h
+        printf "};\n\n" > h
+        for (k = 1; k <= ndm[i]; k++) {
+            msn = to_snake(dm_msg[i, k])
+            printf "int %s_encode_%s(uint8_t *buf, int len, const struct %s *msg);\n", dsn, msn, msn > h
+        }
+        printf "int %s_msg_type(const uint8_t *buf, int len);\n", dsn > h
+        printf "int %s_decode(const uint8_t *buf, int len, struct %s_msg *out);\n\n", dsn, dsn > h
     }
 
     printf "#endif /* %s */\n", guard > h
@@ -342,6 +408,51 @@ END {
         printf "        if (pos < 0) return -1;\n" > c
         printf "    }\n" > c
         printf "    return end;\n}\n\n" > c
+    }
+
+    for (i = 1; i <= nd; i++) {
+        dsn = to_snake(dn[i]); dun = toupper(dsn)
+
+        # encode helper per message: tag byte, then the microser body
+        for (k = 1; k <= ndm[i]; k++) {
+            msn = to_snake(dm_msg[i, k])
+            printf "int %s_encode_%s(uint8_t *buf, int len, const struct %s *msg)\n", dsn, msn, msn > c
+            printf "{\n    int n;\n\n" > c
+            printf "    if (len < 1) return -1;\n" > c
+            printf "    buf[0] = %s_%s;\n", dun, toupper(msn) > c
+            printf "    n = %s_encode(msg, buf + 1, len - 1);\n", msn > c
+            printf "    if (n < 0) return -1;\n" > c
+            printf "    return n + 1;\n}\n\n" > c
+        }
+
+        # the tag alone, for a caller that decodes into its own struct
+        printf "int %s_msg_type(const uint8_t *buf, int len)\n", dsn > c
+        printf "{\n    if (len < 1) return -1;\n    return buf[0];\n}\n\n" > c
+
+        # decode: read the tag, fill the union, or skip an unknown message
+        printf "int %s_decode(const uint8_t *buf, int len, struct %s_msg *out)\n", dsn, dsn > c
+        printf "{\n    int n;\n\n" > c
+        printf "    if (len < 1) return -1;\n" > c
+        printf "    out->type = buf[0];\n" > c
+        printf "    switch (buf[0]) {\n" > c
+        for (k = 1; k <= ndm[i]; k++) {
+            msn = to_snake(dm_msg[i, k])
+            printf "    case %s_%s:\n", dun, toupper(msn) > c
+            printf "        n = %s_decode(&out->u.%s, buf + 1, len - 1);\n", msn, msn > c
+            printf "        break;\n" > c
+        }
+        printf "    default:\n" > c
+        printf "        /* An unknown message still carries its own length\n" > c
+        printf "         * prefix, so step over it the way microser steps over\n" > c
+        printf "         * an unknown field. */\n" > c
+        printf "        out->type = %s_NONE;\n", dun > c
+        printf "        if (len < 3) return -1;\n" > c
+        printf "        n = (int)((uint16_t)buf[1] | ((uint16_t)buf[2] << 8)) + 2;\n" > c
+        printf "        if (n + 1 > len) return -1;\n" > c
+        printf "        break;\n" > c
+        printf "    }\n" > c
+        printf "    if (n < 0) return -1;\n" > c
+        printf "    return n + 1;\n}\n\n" > c
     }
 
     close(c)

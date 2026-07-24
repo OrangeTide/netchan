@@ -11,6 +11,8 @@
 #   common/      terminal and socket odds and ends the programs share.
 #   chat/        two peers, plain UDP, no crypto. The smallest thing that
 #                exercises netchan end to end.
+#   typed/       structured messages on a channel via microser and a
+#                generated dispatch table. No socket; an in-process pump.
 #   ws_gateway/  relays browser WebSocket clients onto an unmodified UDP
 #                server as ordinary peers.
 #   echo/        an encrypted session: netchan over nc_crypto, no login.
@@ -19,4 +21,4 @@
 
 ROOT := $(dir $(lastword $(MAKEFILE_LIST)))
 
-SUBDIRS = iox common chat ws_gateway echo auth
+SUBDIRS = iox common chat typed ws_gateway echo auth

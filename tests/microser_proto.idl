@@ -44,3 +44,10 @@ end
 message Edge
     uint32 top = 31
 end
+
+# a dispatch table: three messages multiplexed on a leading tag byte
+dispatch Proto
+    1 Everything
+    2 Event
+    7 Edge
+end
