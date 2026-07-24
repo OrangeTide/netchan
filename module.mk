@@ -7,6 +7,7 @@
 #   transport/   nc_udp and nc_ws: the only code that knows sockaddr or HTTP.
 #   crypto/      nc_crypto, a transport decorator. Needs monocypher.
 #   auth/        nc_auth and keystore: the login conversation and its files.
+#   idl/         microser: message definitions compiled to structs and codecs.
 #
 # third_party/ holds vendored monocypher. examples/ and tests/ are not part
 # of the library and a vendoring project normally leaves them behind; see
@@ -24,7 +25,9 @@ ROOT := $(dir $(lastword $(MAKEFILE_LIST)))
 # project-wide variable; everything else propagates through _LIBS.
 NETCHAN_SRC_INC := -I$(ROOT)src
 
-SUBDIRS = third_party src transport crypto auth tests
+# idl comes before tests and examples because it exports NETCHAN_IDL_INC and
+# MICROSER_GEN, which their codegen rules read at include time.
+SUBDIRS = third_party src transport crypto auth idl tests
 
 NETCHAN_EXAMPLES ?= 1
 ifeq ($(NETCHAN_EXAMPLES),1)
