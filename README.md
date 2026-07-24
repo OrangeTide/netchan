@@ -127,12 +127,11 @@ while ((n = netchan_send_next(c, pkt, sizeof pkt, &to)) > 0)
 netchan_close(c);
 ```
 
-That last block matters. `netchan_close()` frees the connection and
-tells the peer nothing, and netchan owns no socket, so the DISCONNECT that
-`netchan_disconnect()` queues goes nowhere until you send it yourself. Skip
-the flush and the peer keeps the session alive until its idle timeout
-expires, thirty seconds by default. A server handing the slot to the next
-client waits that out for nothing.
+`netchan_close()` frees the connection and tells the peer nothing, and netchan
+owns no socket, so the DISCONNECT that `netchan_disconnect()` queues goes
+nowhere until you send it yourself. Skip the flush and the peer keeps the
+session alive until its idle timeout expires, thirty seconds by default. A
+server handing the slot to the next client waits that out for nothing.
 
 Channels come in three flavours. `NETCHAN_RELIABLE` gives ordered, acked,
 retransmitted datagrams. `NETCHAN_UNRELIABLE` is fire and forget, which is

@@ -8,8 +8,8 @@
 # had just cleared. That needed a client to leave, which needed a DISCONNECT
 # to arrive, which is exactly what netchan_disconnect made ordinary.
 #
-# So: start the server, connect a client, interrupt the client, and require
-# the server to survive it and to report the departure. The whole run takes
+# The test starts the server, connects a client, interrupts the client, and
+# requires the server to survive that and to report the departure. It takes
 # about eight seconds against a thirty second idle timeout, so a server that
 # reports the disconnect can only have learned it from a frame on the wire.
 #
