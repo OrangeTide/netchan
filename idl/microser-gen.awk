@@ -8,54 +8,63 @@
 #   awk -f microser-gen.awk /dev/null
 # and lint it with `gawk --lint`.
 
-function to_snake(s,    r, i, c) {
+function to_snake(s,    r, si, sc) {
     r = ""
-    for (i = 1; i <= length(s); i++) {
-        c = substr(s, i, 1)
-        if (c >= "A" && c <= "Z") {
-            if (i > 1) r = r "_"
-            r = r tolower(c)
+    for (si = 1; si <= length(s); si++) {
+        sc = substr(s, si, 1)
+        if (sc >= "A" && sc <= "Z") {
+            if (si > 1) r = r "_"
+            r = r tolower(sc)
         } else {
-            r = r c
+            r = r sc
         }
     }
     return r
 }
 
-function is_bytes(t) {
-    return (t == "bytes" || t == "string")
+function is_bytes(ty) {
+    return (ty == "bytes" || ty == "string")
 }
 
-function is_enum(t,    i) {
-    for (i = 1; i <= ne; i++)
-        if (t == en[i]) return 1
+function is_enum(ty,    ei) {
+    for (ei = 1; ei <= ne; ei++)
+        if (ty == en[ei]) return 1
     return 0
 }
 
-function c_type(t) {
-    if (t ~ /^u?int(8|16|32|64)$/) return t "_t"
-    if (is_bytes(t)) return ""
-    return to_snake(t) "_t"
+function c_type(ty) {
+    if (ty ~ /^u?int(8|16|32|64)$/) return ty "_t"
+    if (is_bytes(ty)) return ""
+    return to_snake(ty) "_t"
 }
 
 # The read/write helper suffix for a type. An enum is a uint8, which is what
 # the typedef the header emits for it says too.
-function rw_suffix(t) {
-    if (t == "uint8")  return "u8"
-    if (t == "int8")   return "i8"
-    if (t == "uint16") return "u16"
-    if (t == "int16")  return "i16"
-    if (t == "uint32") return "u32"
-    if (t == "int32")  return "i32"
-    if (t == "uint64") return "u64"
-    if (t == "int64")  return "i64"
-    if (is_enum(t))    return "u8"
+function rw_suffix(ty) {
+    if (ty == "uint8")  return "u8"
+    if (ty == "int8")   return "i8"
+    if (ty == "uint16") return "u16"
+    if (ty == "int16")  return "i16"
+    if (ty == "uint32") return "u32"
+    if (ty == "int32")  return "i32"
+    if (ty == "uint64") return "u64"
+    if (ty == "int64")  return "i64"
+    if (is_enum(ty))    return "u8"
     return ""
 }
 
 function fail(msg) {
     printf "%s: %s\n", FILENAME, msg > "/dev/stderr"
     errors++
+}
+
+# Declare the running counts so every later reference is to a variable this
+# program has set. The base check lives in END, not here: an exit in BEGIN
+# still runs END, which would generate empty files, so the guard has to be
+# where a failed check can stop before any output.
+BEGIN {
+    nm = 0; ne = 0; nd = 0; errors = 0
+    state = ""
 }
 
 # strip comments and whitespace
@@ -177,6 +186,16 @@ state == "dispatch" {
 
 # --- code generation ---
 END {
+    # base arrives through -v and names the output files. Without it there is
+    # nowhere to write, so stop before generating anything. An exit here is
+    # terminal, unlike one in BEGIN, which would still fall through to this
+    # block and emit empty files.
+    if (base == "") {
+        print "microser-gen.awk: no output base (pass -v base=...)" > "/dev/stderr"
+        close("/dev/stderr")
+        exit 1
+    }
+
     # Check before writing anything, so a rejected .idl leaves no half
     # generated files behind for the build to pick up.
     for (i = 1; i <= nm; i++) {
@@ -224,8 +243,10 @@ END {
                          dm_tag[di, dk]))
         }
     }
-    if (errors > 0)
+    if (errors > 0) {
+        close("/dev/stderr")
         exit 1
+    }
 
     h = base ".h"
     c = base ".c"
