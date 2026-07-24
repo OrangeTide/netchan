@@ -125,7 +125,7 @@ struct netchan_conn *netchan_open(int server);
 
 /* Queue a DISCONNECT for the peer and enter CLOSING, without freeing.  Run one
  * netchan_send_next cycle afterward to transmit it, then netchan_close to free.
- * A graceful shutdown that saves the peer a idle timeout.
+ * A graceful shutdown that saves the peer an idle timeout.
  *
  * Does nothing unless the connection is CONNECTED, so calling it twice, or on
  * a session that never finished its handshake, is safe and queues nothing.
