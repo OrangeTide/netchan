@@ -52,10 +52,11 @@ fill_random(uint8_t *buf, size_t n)
 #if defined(NC_RANDOM_BCRYPT)
     /* STATUS_SUCCESS is 0. */
     return BCryptGenRandom(NULL, (PUCHAR)buf, (ULONG)n,
-                           BCRYPT_USE_SYSTEM_PREFERRED_RNG) == 0 ? 0 : -1;
+                           BCRYPT_USE_SYSTEM_PREFERRED_RNG) == 0
+           ? NC_CRYPTO_OK : NC_CRYPTO_ERR;
 #elif defined(NC_RANDOM_ARC4)
     arc4random_buf(buf, n);
-    return 0;
+    return NC_CRYPTO_OK;
 #else
     FILE *f;
     size_t got;
@@ -74,15 +75,15 @@ fill_random(uint8_t *buf, size_t n)
         off += (size_t)r;
     }
     if (off == n)
-        return 0;
+        return NC_CRYPTO_OK;
 #  endif
 
     f = fopen("/dev/urandom", "rb");
     if (!f)
-        return -1;
+        return NC_CRYPTO_ERR;
     got = fread(buf, 1, n, f);
     fclose(f);
-    return got == n ? 0 : -1;
+    return got == n ? NC_CRYPTO_OK : NC_CRYPTO_ERR;
 #endif
 }
 
@@ -159,7 +160,7 @@ derive_session(struct nc_crypto *c, const uint8_t peer_eph[32])
     uint8_t dh_ee[32], dh_is[32], dh_si[32];
     uint8_t k_i2r[32], k_r2i[32];
     const uint8_t *eph_lo, *eph_hi, *s_init, *s_resp;
-    int rc = 0;
+    int rc = NC_CRYPTO_OK;
 
     memset(dh_is, 0, sizeof(dh_is));
     memset(dh_si, 0, sizeof(dh_si));
@@ -168,7 +169,7 @@ derive_session(struct nc_crypto *c, const uint8_t peer_eph[32])
     /* A low-order peer key drives the shared secret to zero, which would
      * make every session with that peer derive the same keys. Refuse. */
     if (is_zero32(dh_ee)) {
-        rc = -1;
+        rc = NC_CRYPTO_ERR;
         goto out;
     }
 
@@ -224,13 +225,13 @@ nc_crypto_init(struct nc_crypto *c, int role, const struct nc_crypto_cfg *cfg)
 
     if (cfg && cfg->eph_sk_seed) {
         memcpy(c->eph_sk, cfg->eph_sk_seed, 32);
-    } else if (fill_random(c->eph_sk, 32) != 0) {
-        return -1;
+    } else if (fill_random(c->eph_sk, 32) != NC_CRYPTO_OK) {
+        return NC_CRYPTO_ERR;
     }
     crypto_x25519_public_key(c->eph_pk, c->eph_sk);
 
     if (!cfg)
-        return 0;
+        return NC_CRYPTO_OK;
 
     if (cfg->psk)
         memcpy(c->psk, cfg->psk, 32);
@@ -242,7 +243,7 @@ nc_crypto_init(struct nc_crypto *c, int role, const struct nc_crypto_cfg *cfg)
     c->require_peer_static = cfg->require_peer_static;
     c->verify_peer = cfg->verify_peer;
     c->verify_ctx = cfg->verify_ctx;
-    return 0;
+    return NC_CRYPTO_OK;
 }
 
 void
@@ -286,11 +287,11 @@ nc_crypto_seal(struct nc_crypto *c, const uint8_t *plain, size_t len,
                uint8_t *out, size_t cap)
 {
     if (!c->have_key)
-        return -1;
+        return NC_CRYPTO_ERR;
     if (cap < len + NC_CRYPTO_OVERHEAD)
-        return -1;
+        return NC_CRYPTO_ERR;
     if (c->tx_counter == UINT64_MAX)
-        return -1;                        /* refuse to wrap the nonce */
+        return NC_CRYPTO_ERR;   /* refuse to wrap the nonce */
 
     uint64_t counter = ++c->tx_counter;   /* 1-based, never reused */
     uint8_t nonce[24];
@@ -310,22 +311,22 @@ static int
 replay_check_and_update(struct nc_crypto *c, uint64_t counter)
 {
     if (counter == 0)
-        return -1;                         /* counters are 1-based */
+        return NC_CRYPTO_ERR;   /* counters are 1-based */
     if (counter > c->rx_max) {
         uint64_t shift = counter - c->rx_max;
         c->rx_window = (shift >= 64) ? 0 : (c->rx_window << shift);
         c->rx_window |= 1;                 /* bit 0 = rx_max (== counter now) */
         c->rx_max = counter;
-        return 0;
+        return NC_CRYPTO_OK;
     }
     uint64_t diff = c->rx_max - counter;
     if (diff >= 64)
-        return -1;                         /* too old */
+        return NC_CRYPTO_ERR;   /* too old */
     uint64_t bit = (uint64_t)1 << diff;
     if (c->rx_window & bit)
-        return -1;                         /* already seen: replay */
+        return NC_CRYPTO_ERR;   /* already seen: replay */
     c->rx_window |= bit;
-    return 0;
+    return NC_CRYPTO_OK;
 }
 
 /* A HELLO arrived. Decide whether to trust who sent it, then derive. */
@@ -344,11 +345,11 @@ consume_hello(struct nc_crypto *c, const uint8_t *body)
     }
     if (c->verify_peer &&
         c->verify_peer(c->verify_ctx,
-                       c->peer_has_static ? c->peer_static_pk : NULL) != 0) {
+                       c->peer_has_static ? c->peer_static_pk : NULL) != NC_CRYPTO_OK) {
         c->failed = 1;                     /* the application said no */
         return;
     }
-    if (derive_session(c, body) != 0)
+    if (derive_session(c, body) != NC_CRYPTO_OK)
         c->failed = 1;                     /* degenerate ephemeral key */
 }
 
@@ -357,11 +358,11 @@ nc_crypto_open(struct nc_crypto *c, const uint8_t *pkt, size_t len,
                uint8_t *out, size_t cap)
 {
     if (len < 1 || c->failed)
-        return -1;
+        return NC_CRYPTO_ERR;
 
     if (pkt[0] == NC_CRYPTO_HELLO) {
         if (len != NC_CRYPTO_HELLO_LEN)
-            return -1;
+            return NC_CRYPTO_ERR;
         /* Only the first HELLO establishes keys. A later HELLO is ignored
          * on purpose: there is no mid-session re-key, so an attacker cannot
          * replay or inject one to reset the session to a chosen key, nor
@@ -374,10 +375,10 @@ nc_crypto_open(struct nc_crypto *c, const uint8_t *pkt, size_t len,
 
     if (pkt[0] == NC_CRYPTO_DATA) {
         if (!c->have_key || len < NC_CRYPTO_OVERHEAD)
-            return -1;
+            return NC_CRYPTO_ERR;
         size_t ct_len = len - NC_CRYPTO_OVERHEAD;
         if (ct_len > cap)
-            return -1;
+            return NC_CRYPTO_ERR;
 
         uint64_t counter = rd64be(pkt + 1);
         uint8_t nonce[24];
@@ -386,14 +387,14 @@ nc_crypto_open(struct nc_crypto *c, const uint8_t *pkt, size_t len,
 
         if (crypto_aead_unlock(out, pkt + 9, c->rx_key, nonce,
                                NULL, 0, pkt + NC_CRYPTO_OVERHEAD, ct_len) != 0)
-            return -1;                     /* forged or corrupt */
+            return NC_CRYPTO_ERR;   /* forged or corrupt */
 
-        if (replay_check_and_update(c, counter) != 0) {
+        if (replay_check_and_update(c, counter) != NC_CRYPTO_OK) {
             crypto_wipe(out, ct_len);
-            return -1;                     /* replayed */
+            return NC_CRYPTO_ERR;   /* replayed */
         }
         return (long)ct_len;
     }
 
-    return -1;                             /* unknown type */
+    return NC_CRYPTO_ERR;   /* unknown type */
 }

@@ -7,6 +7,14 @@
 #include <stddef.h>
 
 /*
+ * The status calls use this pair. nc_crypto_seal and nc_crypto_open return a
+ * length instead, so for those NC_CRYPTO_ERR is the failure value and 0 is a
+ * real length meaning "nothing to deliver".
+ */
+#define NC_CRYPTO_OK  (0)
+#define NC_CRYPTO_ERR (-1)
+
+/*
  * A transport decorator that sits between netchan and the socket:
  * netchan_send_next produces a plaintext datagram, nc_crypto_seal() wraps
  * it, and the socket sends the wrapped bytes; incoming datagrams pass
@@ -74,8 +82,8 @@
  * is parsed and before any key material is derived from it.
  *
  * peer_static_pk is the 32-byte key the peer presented, or NULL if it
- * presented none. Return 0 to accept and continue, non-zero to abort the
- * session permanently (see nc_crypto_failed).
+ * presented none. Return NC_CRYPTO_OK to accept and continue, non-zero to
+ * abort the session permanently (see nc_crypto_failed).
  */
 typedef int (*nc_crypto_verify_cb)(void *ctx, const uint8_t *peer_static_pk);
 
@@ -119,7 +127,8 @@ struct nc_crypto_cfg {
  * Initialise. role is 0 for the connecting side, 1 for the accepting side.
  * cfg may be NULL, which selects a fresh ephemeral key from the OS RNG, no
  * pre-shared key, and no identity key: the unauthenticated NN handshake.
- * Returns 0 on success, -1 if the OS RNG was needed but unavailable.
+ * Returns NC_CRYPTO_OK, or NC_CRYPTO_ERR if the OS RNG was needed but
+ * unavailable.
  */
 int nc_crypto_init(struct nc_crypto *c, int role,
                    const struct nc_crypto_cfg *cfg);
@@ -153,14 +162,15 @@ int nc_crypto_failed(const struct nc_crypto *c);
 const uint8_t *nc_crypto_session_id(const struct nc_crypto *c);
 
 /* Seal a plaintext netchan datagram. Returns the wrapped length
- * (len + NC_CRYPTO_OVERHEAD), or -1 on error / not ready / no room. */
+ * (len + NC_CRYPTO_OVERHEAD), or NC_CRYPTO_ERR on error, not ready, or no
+ * room. */
 long nc_crypto_seal(struct nc_crypto *c, const uint8_t *plain, size_t len,
                     uint8_t *out, size_t cap);
 
 /* Process one incoming datagram.
  *   HELLO packet: consumes it (may make the session ready); returns 0.
  *   DATA packet : writes plaintext to out; returns its length (> 0).
- *   bad auth / replay / malformed: returns -1.
+ *   bad auth / replay / malformed: returns NC_CRYPTO_ERR.
  * A return of 0 means "nothing to deliver to netchan_feed". */
 long nc_crypto_open(struct nc_crypto *c, const uint8_t *pkt, size_t len,
                     uint8_t *out, size_t cap);
