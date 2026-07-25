@@ -1,4 +1,4 @@
-# modular-make -- A modular GNUmakefile for C, C++, D, Fortran, Objective-C, Objective-C++, Pascal, Modula-2, and Assembly projects [v1.8.5]
+# modular-make -- A modular GNUmakefile for C, C++, D, Fortran, Objective-C, Objective-C++, Pascal, Modula-2, and Assembly projects [v1.8.7]
 # updated: 20 Jul 2026
 # Requires GNU Make 3.81 or later.  compile_commands.json needs the $(file)
 # function (GNU Make 4.0); it is skipped on 3.81.
@@ -690,9 +690,20 @@ endif
 
 # Cross-toolchain prefix derived from $(CC) so OBJCOPY/STRIP match the target.
 # e.g. CC=aarch64-linux-gnu-gcc -> aarch64-linux-gnu-objcopy.  Empty for native.
+# A prefixed name is used only when it exists in PATH; otherwise fall back to
+# the unprefixed tool.  This handles compiler wrappers like musl-gcc, which
+# ship no musl-objcopy/musl-strip and rely on the native binutils.
 _TOOLCHAIN_PREFIX := $(shell echo "$(CC)" | sed -E 's|.*/||; s/(gcc|clang|cc)(-[0-9.]+)?$$//')
-OBJCOPY ?= $(_TOOLCHAIN_PREFIX)objcopy
-STRIP   ?= $(_TOOLCHAIN_PREFIX)strip
+_pick_tool = $(shell command -v $(_TOOLCHAIN_PREFIX)$1 >/dev/null 2>&1 && echo $(_TOOLCHAIN_PREFIX)$1 || echo $1)
+# Snapshot with := so the command -v probe runs once, not on every $(OBJCOPY)/
+# $(STRIP) reference in the per-target split-debug recipe.  The origin guard
+# preserves the override behaviour that ?= gave.
+ifeq ($(origin OBJCOPY),undefined)
+OBJCOPY := $(call _pick_tool,objcopy)
+endif
+ifeq ($(origin STRIP),undefined)
+STRIP := $(call _pick_tool,strip)
+endif
 
 # Literal space and comma, for subst-based list manipulation.
 _empty :=
@@ -868,18 +879,23 @@ explode_dirs = $(sort $(filter-out .,$(if $1,$(call explode_dirs,$(filter-out $1
 ifdef TARGET_TRIPLET
   _triplet_fields := $(subst -, ,$(TARGET_TRIPLET))
   _TARGET_ARCH := $(word 1,$(_triplet_fields))
-  # Map triplet OS component to the uname -s spelling used in suffixes.
-  # Some triplets place the OS-bearing word at position 3 (e.g.
-  # wasm32-unknown-emscripten), so fall back to findstring on the full
-  # triplet when the word-2 check does not match a known OS.
-  _triplet_os := $(word 2,$(_triplet_fields))
+  # Map the triplet's OS component to the uname -s spelling used in suffixes.
+  # The OS does not sit at a fixed position: a triplet may or may not carry a
+  # vendor field, and gcc and clang disagree on the same machine. gcc reports
+  # x86_64-linux-gnu while clang reports x86_64-pc-linux-gnu. So match on the
+  # whole triplet rather than on one word. Order matters, mingw and cygwin
+  # triplets are checked before the generic names they can contain.
+  #
+  # The fallback is for triplets naming an OS this list does not know. Use
+  # word 3 when a vendor field is present (four or more fields), word 2
+  # otherwise.
+  _triplet_os := $(if $(word 4,$(_triplet_fields)),$(word 3,$(_triplet_fields)),$(word 2,$(_triplet_fields)))
   _TARGET_OS := $(strip $(if $(findstring emscripten,$(TARGET_TRIPLET)),Emscripten,\
-                $(if $(filter linux,$(_triplet_os)),Linux,\
-                $(if $(filter apple,$(_triplet_os)),Darwin,\
-                $(if $(filter w64 pc,$(_triplet_os)),$(if $(findstring mingw,$(TARGET_TRIPLET)),Windows_NT,\
+                $(if $(findstring mingw,$(TARGET_TRIPLET)),Windows_NT,\
                 $(if $(findstring cygwin,$(TARGET_TRIPLET)),Windows_NT,\
-                $(_triplet_os))),\
-                $(_triplet_os))))))
+                $(if $(findstring darwin,$(TARGET_TRIPLET)),Darwin,\
+                $(if $(findstring linux,$(TARGET_TRIPLET)),Linux,\
+                $(_triplet_os)))))))
 else
   _TARGET_OS   := $(shell uname -s)
   _TARGET_ARCH := $(shell uname -m)
@@ -1012,8 +1028,10 @@ $(eval $(value _load_modules))
 # Per-target variables can carry .<os>, .<arch>, or .<os>.<arch> suffixes
 # (e.g. foo_SRCS.Linux, foo_LDLIBS.Darwin.arm64).  After all module.mk
 # files are loaded the suffixed values are appended to the base variable.
-# _TARGET_OS is from `uname -s` (Linux, Darwin, Windows_NT under MSYS/Cygwin).
-# _TARGET_ARCH is from `uname -m` (x86_64, aarch64, ...).
+# _TARGET_OS uses the `uname -s` spelling (Linux, Darwin, Windows_NT under
+# MSYS/Cygwin) and _TARGET_ARCH the `uname -m` spelling (x86_64, aarch64,
+# ...), but both are derived from the target triplet so that a cross-compile
+# picks the target's suffixes rather than the build host's.
 
 _target_platform_suffixes = .$(_TARGET_OS) .$(_TARGET_ARCH) .$(_TARGET_OS).$(_TARGET_ARCH)
 _merge_one = $(foreach s,$2,$(eval $1_$3 += $($1_$3$s)))
