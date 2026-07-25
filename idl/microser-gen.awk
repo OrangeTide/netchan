@@ -8,11 +8,15 @@
 #   awk -f microser-gen.awk /dev/null
 # and lint it with `gawk --lint`.
 
+# Range comparisons like (sc >= "A" && sc <= "Z") are locale dependent. Some
+# locales collate as aAbBcC..., which puts every lowercase letter inside that
+# range and mangles "event" into "e_v_e_n_t". index() against an explicit set
+# is collation independent, so use that instead.
 function to_snake(s,    r, si, sc) {
     r = ""
     for (si = 1; si <= length(s); si++) {
         sc = substr(s, si, 1)
-        if (sc >= "A" && sc <= "Z") {
+        if (index("ABCDEFGHIJKLMNOPQRSTUVWXYZ", sc) > 0) {
             if (si > 1) r = r "_"
             r = r tolower(sc)
         } else {
