@@ -1,7 +1,7 @@
 /* keystore.h : on-disk keys and credentials for the auth demo */
 
-#ifndef KEYSTORE_H
-#define KEYSTORE_H
+#ifndef KS_KEYSTORE_H
+#define KS_KEYSTORE_H
 
 #include <stdint.h>
 #include <stddef.h>
@@ -94,4 +94,4 @@ int ks_keyfile_load(const char *path, const char *passphrase,
 /* Non-zero if the key file at path is passphrase-protected. */
 int ks_keyfile_encrypted(const char *path);
 
-#endif /* KEYSTORE_H */
+#endif /* KS_KEYSTORE_H */

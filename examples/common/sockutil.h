@@ -1,7 +1,7 @@
 /* sockutil.h : bind and resolve helpers for the demo programs */
 
-#ifndef SOCKUTIL_H
-#define SOCKUTIL_H
+#ifndef SU_SOCKUTIL_H
+#define SU_SOCKUTIL_H
 
 struct nc_addr;
 
@@ -15,4 +15,4 @@ int su_resolve(const char *host, int port, struct nc_addr *out);
 /* The port a bound socket actually got, or -1. */
 int su_local_port(int fd);
 
-#endif /* SOCKUTIL_H */
+#endif /* SU_SOCKUTIL_H */
