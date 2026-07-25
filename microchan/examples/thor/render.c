@@ -1,5 +1,4 @@
 /* render.c : text-mode rendering of the game world (see render.h) */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include "render.h"
 #include "plat.h"

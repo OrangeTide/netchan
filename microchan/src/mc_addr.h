@@ -1,5 +1,4 @@
 /* mc_addr.h : transport-agnostic network address for microchan */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #ifndef MC_ADDR_H
 #define MC_ADDR_H

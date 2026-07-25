@@ -1,5 +1,4 @@
 /* nc_udp_test.c : exercise the nc_udp backend over real UDP sockets */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 /*
  * Unlike netchan_test.c (which packs an nc_addr by hand and never touches

@@ -1,5 +1,4 @@
 /* secure_link.h : encrypted netchan session driven by the iox event loop */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #ifndef SECURE_LINK_H
 #define SECURE_LINK_H

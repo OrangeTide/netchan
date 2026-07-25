@@ -1,5 +1,4 @@
 /* test_nc_auth.c : the login conversation, both sides, no transport */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include <stdio.h>
 #include <string.h>

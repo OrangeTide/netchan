@@ -1,5 +1,4 @@
 /* nc_ws.c : dependency-free WebSocket framing and handshake for netchan */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include "nc_ws.h"
 

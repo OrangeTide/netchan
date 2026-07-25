@@ -1,5 +1,4 @@
 /* nc_udp.c : UDP transport helpers for netchan */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include "nc_udp.h"
 #ifndef _WIN32

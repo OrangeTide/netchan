@@ -1,5 +1,4 @@
 /* keystore.c : on-disk keys and credentials for the auth demo */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include "keystore.h"
 #include "monocypher.h"

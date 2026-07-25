@@ -1,5 +1,4 @@
 /* prompt.h : read a line from the terminal without echoing it */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #ifndef PROMPT_H
 #define PROMPT_H

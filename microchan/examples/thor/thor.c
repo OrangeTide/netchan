@@ -1,5 +1,4 @@
 /* thor.c : Caves-of-Thor-style networked game over microchan */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 /*
  * One instance hosts (and plays); the others join. Run:

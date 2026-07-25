@@ -1,5 +1,4 @@
 /* nc_crypto.h : encrypted UDP transport decorator for netchan */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #ifndef NC_CRYPTO_H
 #define NC_CRYPTO_H

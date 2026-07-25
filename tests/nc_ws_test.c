@@ -1,5 +1,4 @@
 /* nc_ws_test.c : known-answer + round-trip checks for the WebSocket codec */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include "nc_ws.h"
 

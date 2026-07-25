@@ -1,5 +1,4 @@
 /* test_secure_link.c : encrypted echo round-trip over real loopback sockets */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 /*
  * Drives a server and a client secure_link through a single iox loop on

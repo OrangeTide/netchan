@@ -1,5 +1,4 @@
 /* nc_crypto.c : encrypted UDP transport decorator for netchan */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include "nc_crypto.h"
 #include "monocypher.h"

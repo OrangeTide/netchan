@@ -1,5 +1,4 @@
 /* test_mc_udp.c : the host UDP transport over real loopback sockets */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 /*
  * The protocol tests run on mc_memlink, so this is the only thing that

@@ -1,5 +1,4 @@
 /* nc_addr.h : opaque transport address for netchan */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #ifndef NC_ADDR_H
 #define NC_ADDR_H

@@ -1,5 +1,4 @@
 /* sockutil.h : bind and resolve helpers for the demo programs */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #ifndef SOCKUTIL_H
 #define SOCKUTIL_H

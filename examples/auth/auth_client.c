@@ -1,5 +1,4 @@
 /* auth_client.c : echo client that checks the host key and logs in */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include <stdio.h>
 #include <stdlib.h>

@@ -1,5 +1,4 @@
 /* netchan.h : multiplexed UDP channels for game networking */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #ifndef NETCHAN_H
 #define NETCHAN_H

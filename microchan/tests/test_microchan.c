@@ -1,5 +1,4 @@
 /* test_microchan.c : core protocol tests over an in-memory datagram link */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 /*
  * The core is buffer-in, buffer-out, so these tests do not need a socket

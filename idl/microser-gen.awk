@@ -263,8 +263,7 @@ END {
     sub(/.*\//, "", hbase)
 
     # ---- header ----
-    printf "/* Generated from %s - do not edit */\n", FILENAME > h
-    printf "/* PUBLIC DOMAIN (CC0-1.0) */\n\n" > h
+    printf "/* Generated from %s - do not edit */\n\n", FILENAME > h
     printf "#ifndef %s\n#define %s\n\n#include \"microser.h\"\n\n", guard, guard > h
 
     for (i = 1; i <= ne; i++) {
@@ -326,8 +325,7 @@ END {
     close(h)
 
     # ---- source ----
-    printf "/* Generated from %s - do not edit */\n", FILENAME > c
-    printf "/* PUBLIC DOMAIN (CC0-1.0) */\n\n" > c
+    printf "/* Generated from %s - do not edit */\n\n", FILENAME > c
     printf "#include \"%s\"\n", hbase ".h" > c
     printf "#include <string.h>\n\n" > c
 

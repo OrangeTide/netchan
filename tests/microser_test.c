@@ -1,5 +1,4 @@
 /* microser_test.c : round-trip and edge tests for the microser codecs */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 /*
  * microser_proto.idl is compiled to microser_proto.c/.h by the build, and

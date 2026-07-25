@@ -1,5 +1,4 @@
 /* plat_dos.c : 16-bit DOS implementation of the platform layer */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include "plat.h"
 #include <dos.h>

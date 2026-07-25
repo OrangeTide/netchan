@@ -1,5 +1,4 @@
 /* mc_memlink.c : an in-memory datagram link for microchan tests */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include "mc_memlink.h"
 #include <string.h>

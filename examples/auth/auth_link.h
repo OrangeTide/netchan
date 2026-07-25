@@ -1,5 +1,4 @@
 /* auth_link.h : authenticated encrypted netchan session on the iox loop */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #ifndef AUTH_LINK_H
 #define AUTH_LINK_H

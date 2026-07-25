@@ -1,5 +1,4 @@
 /* echo_server.c : encrypted netchan echo server over the iox event loop */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include <arpa/inet.h>
 #include <fcntl.h>

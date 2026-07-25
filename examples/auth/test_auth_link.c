@@ -1,5 +1,4 @@
 /* test_auth_link.c : authenticated echo over a real loopback socket */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include <stdio.h>
 #include <string.h>

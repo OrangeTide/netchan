@@ -1,5 +1,4 @@
 /* nc_udp.h : UDP transport helpers for netchan (sockaddr <-> nc_addr) */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #ifndef NC_UDP_H
 #define NC_UDP_H

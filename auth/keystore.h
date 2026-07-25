@@ -1,5 +1,4 @@
 /* keystore.h : on-disk keys and credentials for the auth demo */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #ifndef KEYSTORE_H
 #define KEYSTORE_H

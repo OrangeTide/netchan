@@ -1,5 +1,4 @@
 /* game.h : portable server-authoritative game core for the microchan demo */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 /*
  * A small Gauntlet-style game with a Caves-of-Thor text-mode look: a larger

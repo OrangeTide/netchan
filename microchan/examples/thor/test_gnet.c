@@ -1,5 +1,4 @@
 /* test_gnet.c : host check of the game net layer over an in-memory link */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 /*
  * game_net owns no socket by design: the application pulls datagrams out

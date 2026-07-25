@@ -1,5 +1,4 @@
 /* ipxtest.c : DOS IPX reliability test for microchan (run in DOSBox) */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 /*
  * Two instances, connected through DOSBox's IPX tunnel (and an ipxrelay):

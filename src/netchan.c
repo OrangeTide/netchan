@@ -1,5 +1,4 @@
 /* netchan.c : multiplexed UDP channels for game networking */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #ifdef _WIN32
 /* rand_s() sits behind this in <stdlib.h>, and it has to be defined before

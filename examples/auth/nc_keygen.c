@@ -1,5 +1,4 @@
 /* nc_keygen.c : make a client identity key, print it for authorized_keys */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include <stdio.h>
 #include <stdlib.h>

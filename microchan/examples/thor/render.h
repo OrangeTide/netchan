@@ -1,5 +1,4 @@
 /* render.h : text-mode rendering of the game world */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #ifndef RENDER_H
 #define RENDER_H

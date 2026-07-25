@@ -1,5 +1,4 @@
 /* test_keystore.c : the on-disk key and credential formats */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include <stdio.h>
 #include <stdlib.h>

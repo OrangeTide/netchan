@@ -1,5 +1,4 @@
 /* game_net.h : microchan wire protocol and peer glue for the game */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 /*
  * Two microchan channels, opened by both peers in the same order:

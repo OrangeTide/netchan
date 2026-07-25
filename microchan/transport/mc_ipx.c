@@ -1,5 +1,4 @@
 /* mc_ipx.c : 16-bit MS-DOS IPX transport for microchan (polling, no ESR) */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include "mc_ipx.h"
 #include <dos.h>

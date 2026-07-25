@@ -1,5 +1,4 @@
 /* nc_auth.h : SSH-shaped client authentication over an established session */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #ifndef NC_AUTH_H
 #define NC_AUTH_H

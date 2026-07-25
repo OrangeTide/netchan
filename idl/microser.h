@@ -1,5 +1,4 @@
 /* microser.h : tagged message serialisation with no heap and no dependencies */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 /*
  * A field is a tag byte followed by its value.  The tag packs a field number

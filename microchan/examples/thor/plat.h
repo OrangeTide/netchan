@@ -1,5 +1,4 @@
 /* plat.h : platform layer (text screen, keyboard, timing) for the game */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #ifndef PLAT_H
 #define PLAT_H

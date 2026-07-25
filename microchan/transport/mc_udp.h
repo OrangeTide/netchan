@@ -1,5 +1,4 @@
 /* mc_udp.h : host (POSIX) UDP transport for microchan development */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #ifndef MC_UDP_H
 #define MC_UDP_H

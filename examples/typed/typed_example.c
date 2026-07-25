@@ -1,5 +1,4 @@
 /* typed_example.c : structured messages on a netchan channel via microser */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 /*
  * netchan moves opaque bytes; microser decides what they mean. This shows the

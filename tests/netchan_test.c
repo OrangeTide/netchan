@@ -1,5 +1,4 @@
 /* netchan_test.c : loopback tests for netchan protocol */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include "netchan.h"
 #include <stdio.h>

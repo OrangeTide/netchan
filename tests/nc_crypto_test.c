@@ -1,5 +1,4 @@
 /* nc_crypto_test.c : run a netchan session over the encrypted decorator */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include "netchan.h"
 #include "nc_crypto.h"

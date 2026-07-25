@@ -1,5 +1,4 @@
 /* mc_memlink.h : an in-memory datagram link for microchan tests */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 /*
  * The microchan core and the game net layer are both buffer-in, buffer-out:

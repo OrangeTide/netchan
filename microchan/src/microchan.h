@@ -1,5 +1,4 @@
 /* microchan.h : multiplexed reliable/unreliable channels over IPX or UDP */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #ifndef MICROCHAN_H
 #define MICROCHAN_H

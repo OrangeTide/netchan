@@ -1,5 +1,4 @@
 /* netchan_example.c : chat server + client over localhost UDP */
-/* PUBLIC DOMAIN (CC0-1.0) */
 /*
  * Demonstrates netchan with real sockets: one server, up to 4 clients.
  *

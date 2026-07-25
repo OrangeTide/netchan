@@ -1,5 +1,4 @@
 /* mcdemo.c : phase 1 link/smoke test for the microchan core */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include "microchan.h"
 #include <stdio.h>

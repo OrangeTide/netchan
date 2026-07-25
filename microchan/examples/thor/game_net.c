@@ -1,5 +1,4 @@
 /* game_net.c : microchan wire protocol and peer glue for the game */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include "game_net.h"
 #include <string.h>

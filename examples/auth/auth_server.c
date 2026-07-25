@@ -1,5 +1,4 @@
 /* auth_server.c : echo server that authenticates its clients */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include <stdio.h>
 #include <stdlib.h>

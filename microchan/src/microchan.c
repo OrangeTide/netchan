@@ -1,5 +1,4 @@
 /* microchan.c : transport-agnostic core (handshake, mux, reliability) */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include "microchan.h"
 #include <stdlib.h>

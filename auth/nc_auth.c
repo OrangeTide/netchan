@@ -1,5 +1,4 @@
 /* nc_auth.c : SSH-shaped client authentication over an established session */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include "nc_auth.h"
 #include "monocypher.h"

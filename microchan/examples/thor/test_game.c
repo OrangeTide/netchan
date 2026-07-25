@@ -1,5 +1,4 @@
 /* test_game.c : headless sim check, prints ASCII viewport frames (host) */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include "game.h"
 #include <stdio.h>

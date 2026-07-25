@@ -1,5 +1,4 @@
 /* echo_client.c : encrypted netchan echo client over the iox event loop */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include <fcntl.h>
 #include <netdb.h>

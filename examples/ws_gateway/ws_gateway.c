@@ -1,5 +1,4 @@
 /* ws_gateway.c : relay browser WebSocket clients onto the UDP game server */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 /*
  * The game server is pure UDP and knows nothing about browsers. This gateway

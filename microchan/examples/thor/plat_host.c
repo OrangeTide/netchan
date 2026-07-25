@@ -1,5 +1,4 @@
 /* plat_host.c : POSIX/ANSI implementation of the platform layer */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include "plat.h"
 #include <stdio.h>

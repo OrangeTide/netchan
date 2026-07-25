@@ -1,5 +1,4 @@
 /* game.c : portable server-authoritative game core (see game.h) */
-/* PUBLIC DOMAIN (CC0-1.0) */
 
 #include "game.h"
 #include "rng.h"
