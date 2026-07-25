@@ -7,6 +7,9 @@
 #include <stdint.h>
 #include "mc_addr.h"
 
+#define MC_UDP_OK  (0)
+#define MC_UDP_ERR (-1)
+
 struct mc_udp {
     int fd;
 };

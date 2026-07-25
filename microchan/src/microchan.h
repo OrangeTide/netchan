@@ -66,9 +66,15 @@ enum {
     MC_EV_REDIRECT,         /* lobby handed us off to a game host        */
 };
 
+/*
+ * Success and generic failure are macros so the return type stays a plain
+ * int and the values are fixed: a caller that tests < 0 without including
+ * this header is still right. The causes are an enum because they are a set.
+ */
+#define MC_OK  (0)
+#define MC_ERR (-1)
+
 enum {
-    MC_OK         =  0,
-    MC_ERR        = -1,
     MC_ERR_NOMEM  = -2,
     MC_ERR_AGAIN  = -3,
     MC_ERR_CLOSED = -4,

@@ -7,6 +7,14 @@
 #include <stdint.h>
 
 /*
+ * No NC_WS_OK: the handshake calls are tri-state and 0 does not mean
+ * success. They return a positive value when the exchange completed, 0 when
+ * the header block has not fully arrived yet, and NC_WS_ERR when it is bad.
+ * The framing calls return a size_t length and use 0 for failure.
+ */
+#define NC_WS_ERR (-1)
+
+/*
  * A small, self-contained WebSocket (RFC 6455) codec: just enough to carry
  * netchan datagrams over a browser-reachable pipe. One binary WebSocket
  * message holds exactly one netchan packet, so the datagram boundary the

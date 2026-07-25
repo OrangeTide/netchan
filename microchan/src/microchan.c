@@ -612,7 +612,7 @@ int
 mc_service(struct microchan *c, uint32_t now_ms)
 {
     if (!c)
-        return -1;
+        return MC_ERR;
     c->now = now_ms;
 
     if (c->state == MC_STATE_CONNECTING) {
@@ -621,7 +621,7 @@ mc_service(struct microchan *c, uint32_t now_ms)
             if (c->connect_attempts > CONNECT_RETRIES) {
                 c->state = MC_STATE_CLOSED;
                 ev_push(c, MC_EV_DISCONNECTED, NULL);
-                return -1;
+                return MC_ERR;
             }
             if (c->is_server)
                 c->send_synack = 1;
@@ -636,7 +636,7 @@ mc_service(struct microchan *c, uint32_t now_ms)
         if (now_ms - c->last_recv > IDLE_MS) {
             c->state = MC_STATE_CLOSED;
             ev_push(c, MC_EV_DISCONNECTED, NULL);
-            return -1;
+            return MC_ERR;
         }
         if (c->tx_base != c->tx_next && c->tx_timer &&
             now_ms >= c->tx_timer) {
@@ -645,7 +645,7 @@ mc_service(struct microchan *c, uint32_t now_ms)
             if (c->tx_attempts > RT_ATTEMPTS) {
                 c->state = MC_STATE_CLOSED;
                 ev_push(c, MC_EV_DISCONNECTED, NULL);
-                return -1;
+                return MC_ERR;
             }
             c->tx_unsent = c->tx_base;       /* resend the whole window */
             backoff = (uint32_t)RT_MS << (c->tx_attempts < 4 ?
@@ -659,5 +659,5 @@ mc_service(struct microchan *c, uint32_t now_ms)
         return (int)RT_MS;
     }
 
-    return -1;
+    return MC_ERR;
 }

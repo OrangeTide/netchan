@@ -162,7 +162,7 @@ mc_ipx_open(struct mc_ipx *x, unsigned socket)
     x->socket = (uint16_t)socket;
 
     if (!mc_ipx_entry && !mc_ipx_available())
-        return -1;
+        return MC_IPX_ERR;
     /*
      * Open Socket takes the socket number byte-swapped relative to its
      * on-the-wire (big-endian) form: DOSBox's OpenSocket does swapByte(DX)
@@ -171,7 +171,7 @@ mc_ipx_open(struct mc_ipx *x, unsigned socket)
      */
     if (ipx_open_socket((unsigned)(((socket & 0xFFu) << 8) |
                                    ((socket >> 8) & 0xFFu))) != 0)
-        return -1;
+        return MC_IPX_ERR;
 
     /* discover our own network and node */
     ipx_get_addr(addrbuf);
@@ -181,7 +181,7 @@ mc_ipx_open(struct mc_ipx *x, unsigned socket)
     for (i = 0; i < MC_IPX_RECV; i++)
         post_listen(x, i);
 
-    return 0;
+    return MC_IPX_OK;
 }
 
 void
@@ -233,7 +233,7 @@ mc_ipx_send(struct mc_ipx *x, const void *buf, size_t len,
     struct ipx_hdr __far *h;
 
     if (len > MC_MTU)
-        return -1;
+        return MC_IPX_ERR;
 
     for (i = 0; i < MC_IPX_SEND; i++) {
         if (ipx_send_ecb[i].ccode != CC_PENDING) {

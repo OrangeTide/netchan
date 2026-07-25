@@ -39,7 +39,7 @@ mc_udp_open(struct mc_udp *u, const char *bind_ip, uint16_t port)
 
     fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (fd < 0)
-        return -1;
+        return MC_UDP_ERR;
 
     memset(&sin, 0, sizeof(sin));
     sin.sin_family = AF_INET;
@@ -47,14 +47,14 @@ mc_udp_open(struct mc_udp *u, const char *bind_ip, uint16_t port)
     sin.sin_addr.s_addr = bind_ip ? inet_addr(bind_ip) : htonl(INADDR_ANY);
     if (bind(fd, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
         close(fd);
-        return -1;
+        return MC_UDP_ERR;
     }
 
     fl = fcntl(fd, F_GETFL, 0);
     fcntl(fd, F_SETFL, fl | O_NONBLOCK);
 
     u->fd = fd;
-    return 0;
+    return MC_UDP_OK;
 }
 
 void
@@ -77,7 +77,7 @@ mc_udp_recv(struct mc_udp *u, void *buf, size_t buflen, struct mc_addr *from)
     if (n < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
             return 0;
-        return -1;
+        return MC_UDP_ERR;
     }
     if (from)
         addr_from_sin(from, &sin);
@@ -105,9 +105,9 @@ mc_udp_addr(const char *ip, uint16_t port, struct mc_addr *out)
     sin.sin_port = htons(port);
     sin.sin_addr.s_addr = inet_addr(ip);
     if (sin.sin_addr.s_addr == INADDR_NONE && strcmp(ip, "255.255.255.255"))
-        return -1;
+        return MC_UDP_ERR;
     addr_from_sin(out, &sin);
-    return 0;
+    return MC_UDP_OK;
 }
 
 int
@@ -116,7 +116,7 @@ mc_udp_local(struct mc_udp *u, struct mc_addr *out)
     struct sockaddr_in sin;
     socklen_t sl = sizeof(sin);
     if (getsockname(u->fd, (struct sockaddr *)&sin, &sl) < 0)
-        return -1;
+        return MC_UDP_ERR;
     addr_from_sin(out, &sin);
-    return 0;
+    return MC_UDP_OK;
 }

@@ -12,6 +12,9 @@
 #endif
 #include "nc_addr.h"
 
+#define NC_UDP_OK  (0)
+#define NC_UDP_ERR (-1)
+
 /*
  * UDP packing of nc_addr:
  *

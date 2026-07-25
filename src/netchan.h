@@ -64,14 +64,20 @@ enum {
     NETCHAN_EV_DATA,
 };
 
+/*
+ * Success and generic failure are macros so the return type stays a plain
+ * int and the values are fixed: a caller that tests < 0 without including
+ * this header is still right. The causes are an enum because they are a set.
+ */
+#define NETCHAN_OK  (0)
+#define NETCHAN_ERR (-1)
+
 enum {
-    NETCHAN_OK       =  0,
-    NETCHAN_ERR      = -1,
-    NETCHAN_ERR_NOMEM = -2,
-    NETCHAN_ERR_AGAIN = -3,
+    NETCHAN_ERR_NOMEM  = -2,
+    NETCHAN_ERR_AGAIN  = -3,
     NETCHAN_ERR_CLOSED = -4,
-    NETCHAN_ERR_FLOW  = -5,
-    NETCHAN_ERR_PROTO = -6,
+    NETCHAN_ERR_FLOW   = -5,
+    NETCHAN_ERR_PROTO  = -6,
     NETCHAN_ERR_TOOBIG = -7,
 };
 

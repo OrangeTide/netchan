@@ -194,7 +194,7 @@ nc_ws_accept(const char *req, size_t req_len, char *resp, size_t resp_cap)
     const char *up = find_header(req, req_len, "Upgrade", &up_len);
     const char *key = find_header(req, req_len, "Sec-WebSocket-Key", &key_len);
     if (!up || !key || key_len == 0)
-        return -1;
+        return NC_WS_ERR;
     /* Upgrade value must contain "websocket" (case-insensitive). */
     int ws = 0;
     for (size_t i = 0; up_len >= 9 && i + 9 <= up_len; i++) {
@@ -205,7 +205,7 @@ nc_ws_accept(const char *req, size_t req_len, char *resp, size_t resp_cap)
             (up[i + 8] | 32) == 't') { ws = 1; break; }
     }
     if (!ws)
-        return -1;
+        return NC_WS_ERR;
 
     char akey[32];
     accept_key(akey, key, key_len);
@@ -215,7 +215,7 @@ nc_ws_accept(const char *req, size_t req_len, char *resp, size_t resp_cap)
         "Connection: Upgrade\r\n"
         "Sec-WebSocket-Accept: %s\r\n\r\n", akey);
     if (n < 0 || (size_t)n >= resp_cap)
-        return -1;
+        return NC_WS_ERR;
     return n;
 }
 
@@ -249,11 +249,11 @@ nc_ws_client_verify(const char *resp, size_t len, const char *expect)
         return 0;
     /* Status line must be 101. */
     if (len < 12 || memcmp(resp, "HTTP/1.1 101", 12) != 0)
-        return -1;
+        return NC_WS_ERR;
     size_t alen;
     const char *acc = find_header(resp, len, "Sec-WebSocket-Accept", &alen);
     if (!acc || alen != strlen(expect) || memcmp(acc, expect, alen) != 0)
-        return -1;
+        return NC_WS_ERR;
     return 1;
 }
 

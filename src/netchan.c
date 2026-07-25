@@ -1381,7 +1381,7 @@ netchan_service(struct netchan_conn *c, uint32_t now_ms)
             if (c->connect_attempts >= NC_CONNECT_RETRIES) {
                 c->state = NETCHAN_STATE_CLOSED;
                 ev_push(c, NETCHAN_EV_DISCONNECTED, NULL);
-                return -1;
+                return NETCHAN_ERR;
             }
             ctrl_connect_init(c);
             c->connect_sent_ms = now_ms;
@@ -1398,7 +1398,7 @@ netchan_service(struct netchan_conn *c, uint32_t now_ms)
         if (idle >= c->cfg.idle_timeout_ms) {
             c->state = NETCHAN_STATE_CLOSED;
             ev_push(c, NETCHAN_EV_DISCONNECTED, NULL);
-            return -1;
+            return NETCHAN_ERR;
         }
         int remain = c->cfg.idle_timeout_ms - idle;
         if (next_ms < 0 || remain < next_ms) next_ms = remain;

@@ -12,7 +12,7 @@ nc_udp_from_sockaddr(struct nc_addr *a, const struct sockaddr *sa,
 {
     memset(a, 0, sizeof(*a));
     if (!sa)
-        return -1;
+        return NC_UDP_ERR;
 
     if (sa->sa_family == AF_INET &&
         salen >= (socklen_t)sizeof(struct sockaddr_in)) {
@@ -21,7 +21,7 @@ nc_udp_from_sockaddr(struct nc_addr *a, const struct sockaddr *sa,
         a->a[0] = 4;
         memcpy(a->a + 1, &sin->sin_addr, 4);
         memcpy(a->a + 5, &sin->sin_port, 2);   /* already network order */
-        return 0;
+        return NC_UDP_OK;
     }
 
     if (sa->sa_family == AF_INET6 &&
@@ -31,10 +31,10 @@ nc_udp_from_sockaddr(struct nc_addr *a, const struct sockaddr *sa,
         a->a[0] = 6;
         memcpy(a->a + 1, &sin6->sin6_addr, 16);
         memcpy(a->a + 17, &sin6->sin6_port, 2);
-        return 0;
+        return NC_UDP_OK;
     }
 
-    return -1;
+    return NC_UDP_ERR;
 }
 
 socklen_t

@@ -27,6 +27,9 @@
 #define MC_IPX_SEND 4
 #endif
 
+#define MC_IPX_OK  (0)
+#define MC_IPX_ERR (-1)
+
 struct mc_ipx {
     uint16_t socket;        /* our socket number (host order)              */
     uint8_t  net[4];        /* local network number                        */
