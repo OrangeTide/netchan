@@ -82,8 +82,10 @@ when it is vendored into a tree that has one of its own.
 A filename that already begins with the prefix does not repeat it, so
 `bd_draw.h` guards with `BD_DRAW_H`.
 
-Do not use `#pragma once`. Older and smaller toolchains do not all have it, and
-the portable form costs two lines.
+Do not use `#pragma once`. It is in no C standard, and what counts as the same
+file is left to the implementation, so symlinks, hard links, and a header
+reached through two include paths are handled differently by different
+compilers. The portable form costs two lines and has one meaning.
 
 ## Includes
 
@@ -210,10 +212,13 @@ Put spaces around binary operators. Put no space between a function name and
 its argument list. Put a space after control keywords. Bind `*` to the name,
 not the type.
 
+    uint8_t *p = buf;
+    int next;
+
     next = (c->ev_tail + 1) % NET_EVQ_SLOTS;
     if (len < NET_HDR_SIZE)
-        return -1;
-    uint8_t *p = buf;
+        return NET_ERR;
+    memcpy(p, pkt, len);
 
 Separate logical groups within a function with blank lines. Keep sequential
 assignments to one struct, or to closely related variables, together with no
@@ -228,7 +233,7 @@ belongs to.
 
     if (data[0] != 'S' || data[1] != 'P' || data[2] != 'A' ||
         data[3] != '2')
-        return -1;
+        return NET_ERR;
 
 ## Comments
 
@@ -274,7 +279,7 @@ namespace. They often carry a prefix naming the type or the structure they
 work on, which is a different thing and is worth having.
 
     static int  pool_get(struct net_conn *c);
-    static void event_push(struct net_conn *c, int type);
+    static void evq_push(struct net_conn *c, int type);
 
 A constant that describes an external format rather than the API may keep that
 format's prefix even inside a module named something else, so a reader can tell
@@ -372,15 +377,22 @@ for the module and return one of those instead of the bare `NET_ERR`.
         NET_ERR_NOMEM  = -2,
         NET_ERR_AGAIN  = -3,
         NET_ERR_CLOSED = -4,
+        NET_ERR_PROTO  = -5,
     };
 
-Success stays `0` and the generic failure stays `-1` in either form, so
-`== NET_OK` and `< 0` always agree. Do not define `OK` or `ERR` without the
-module prefix.
+Every failure is negative in either form, so `< 0` is the one test that always
+means failure and is the one to write when the caller does not care why. Do not
+define `OK` or `ERR` without the module prefix.
 
 Pointer-returning functions return `NULL` on failure. A function that returns a
 byte count returns a non-negative count, and a negative error code on failure.
-Never return a value the caller has to interpret by consulting `errno`.
+For those, `== NET_OK` is not a success test, because success is any count from
+zero up; `< 0` is. Never return a value the caller has to interpret by
+consulting `errno`.
+
+A constructor either returns the object pointer, with `NULL` for failure, or
+returns a status with the object handed back through an out-parameter. Both are
+allowed. A module picks one and uses it for everything it opens.
 
 A function that answers a question rather than reporting an error returns
 `bool`, where `true` is the affirmative answer.
@@ -410,6 +422,8 @@ of the function, then let the body run at one level of indentation.
             return NET_ERR_CLOSED;
 
         // the real work, unindented
+
+        return NET_OK;
     }
 
 Do not put an `else` after a branch that returns.
@@ -423,7 +437,7 @@ indented one level. A case that declares variables gets its own braces.
     case NET_STATE_CONNECTING:
     case NET_STATE_CONNECTED:
         c->state = NET_STATE_CLOSED;
-        event_push(c, NET_EV_DISCONNECTED);
+        evq_push(c, NET_EV_DISCONNECTED);
         break;
     default:
         break;
@@ -443,13 +457,17 @@ releasing what it names, in the reverse of the order they were acquired.
     net_open(struct net_conn **out)
     {
         struct net_conn *c;
+        int err;
 
         c = calloc(1, sizeof(*c));
         if (!c)
             return NET_ERR_NOMEM;
-        if (pool_init(c) < 0)
+
+        err = pool_init(c);
+        if (err < 0)
             goto fail_alloc;
-        if (evq_init(c) < 0)
+        err = evq_init(c);
+        if (err < 0)
             goto fail_pool;
 
         *out = c;
@@ -459,7 +477,7 @@ releasing what it names, in the reverse of the order they were acquired.
         pool_free(c);
     fail_alloc:
         free(c);
-        return NET_ERR;
+        return err;
     }
 
 The alternative is the same releases copied into every failure branch, which is
@@ -495,8 +513,12 @@ Keep object-like constants `UPPER_CASE` and give them the module prefix.
 
 Wrap a multi-statement macro in `do { } while (0)`, and parenthesize every
 argument and the whole result. Prefer a `static` function to a function-like
-macro whenever the compiler can inline it. Macros are for what a function
-cannot do, such as capturing an expression's text.
+macro whenever the compiler can inline it.
+
+Macros are for what a function cannot do: returning from the caller, capturing
+an expression's text, or reaching `__FILE__` and `__LINE__` at the call site.
+The test harness below qualifies on the first count, since `FAIL` returns from
+the test that invoked it.
 
     #define TEST(name) \
         do { \
