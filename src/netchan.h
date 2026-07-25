@@ -22,9 +22,9 @@
  * CHANGELOG.md.
  */
 #define NETCHAN_VERSION_MAJOR 0
-#define NETCHAN_VERSION_MINOR 6
+#define NETCHAN_VERSION_MINOR 7
 #define NETCHAN_VERSION_PATCH 0
-#define NETCHAN_VERSION_STRING "0.6.0"
+#define NETCHAN_VERSION_STRING "0.7.0"
 
 /** The version as one comparable integer, e.g. 0.5.0 is 500. Use it to
  *  compile against more than one release: NETCHAN_VERSION >= 500. */

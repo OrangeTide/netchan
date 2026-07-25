@@ -8,6 +8,50 @@ Releases are SemVer and are tagged `vMAJOR.MINOR.PATCH`. The tag is the
 release: GitHub serves a source snapshot for it, which is what
 `tools/vendor.sh` fetches.
 
+## 0.7.0 - 2026-07-24
+
+### Added
+
+- An `idl/` layer, which brings microser back as a message encoder for a
+  channel's payload. `microser.h` is the runtime, a header-only reader and
+  writer for tagged fields, and `microser-gen.sh` compiles an `.idl` file into
+  a C struct with an encode and a decode function. The core still names neither
+  a socket nor a serialiser: netchan moves opaque bytes, and this says what
+  they mean.
+- A dispatch table generated from the same `.idl`, so a program routes an
+  incoming datagram to a typed handler instead of switching on a tag itself. A
+  channel's `content_type` is the topic, read back from its OPEN, so a channel
+  can be routed before a byte of payload is read.
+- A manual, built by `docs/build.sh` into one self-contained page and deployed
+  to GitHub Pages on a push to main. The prose is hand written, the API
+  reference is generated from `src/netchan.h`, and `check-symbols.sh` fails the
+  build if the prose calls a `netchan_` function the header no longer declares.
+  Diagrams are rendered to SVG at build time by mscgen and graphviz, with their
+  colors swapped for `currentColor` so one file serves light and dark.
+
+### Fixed
+
+- The IDL compiler folded two variant fields sharing a tag number into a single
+  struct member, so a union that reused a number generated code that did not
+  compile. Every variant field now gets its own member and its own decode case.
+  The field-number check also compared only plain fields against each other, so
+  a plain field colliding with a variant or with the discriminant reached the C
+  compiler as a duplicate case value. The full field set is checked now, and a
+  collision is reported by name.
+- A generator run with no output base wrote empty `.c` and `.h` files. The
+  guard was in `BEGIN`, where `exit` still runs `END`. It is in `END` now,
+  where `exit` is terminal.
+- The chat server polled a peer it had just freed.
+
+### Changed
+
+- The IDL compiler and the API-reference generator moved out of shell
+  single-quoted strings into `microser-gen.awk` and `gen-api.awk`, invoked with
+  `awk -f`. Every apostrophe and quote in them was a quoting hazard, and one
+  such apostrophe had already spilled part of the program to the shell. As
+  ordinary source files they parse-check and pass `gawk --lint`. Generated
+  output is unchanged. A vendored copy needs both files of each pair.
+
 ## 0.6.0 - 2026-07-23
 
 ### Added
