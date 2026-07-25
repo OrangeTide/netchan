@@ -18,7 +18,7 @@
 void (__far *mc_ipx_entry)(void);
 
 /* Listen For Packet (BX=4): ES:SI -> ECB. */
-extern void ipx_listen(void __far *ecb);
+void ipx_listen(void __far *ecb);
 #pragma aux ipx_listen =                \
     "push bp" "push ds"                 \
     "mov bx, 4"                         \
@@ -27,7 +27,7 @@ extern void ipx_listen(void __far *ecb);
     parm [es si] modify [ax bx cx dx si di es];
 
 /* Send Packet (BX=3): ES:SI -> ECB. */
-extern void ipx_send_pkt(void __far *ecb);
+void ipx_send_pkt(void __far *ecb);
 #pragma aux ipx_send_pkt =              \
     "push bp" "push ds"                 \
     "mov bx, 3"                         \
@@ -36,7 +36,7 @@ extern void ipx_send_pkt(void __far *ecb);
     parm [es si] modify [ax bx cx dx si di es];
 
 /* Open Socket (BX=0): DX = socket, AL = longevity (0xFF = until closed). */
-extern unsigned char ipx_open_socket(unsigned dx_socket);
+unsigned char ipx_open_socket(unsigned dx_socket);
 #pragma aux ipx_open_socket =           \
     "push bp" "push ds"                 \
     "xor bx, bx" "mov al, 0FFh"         \
@@ -45,7 +45,7 @@ extern unsigned char ipx_open_socket(unsigned dx_socket);
     parm [dx] value [al] modify [ax bx cx dx si di es];
 
 /* Close Socket (BX=1): DX = socket. */
-extern void ipx_close_socket(unsigned dx_socket);
+void ipx_close_socket(unsigned dx_socket);
 #pragma aux ipx_close_socket =          \
     "push bp" "push ds"                 \
     "mov bx, 1"                         \
@@ -54,7 +54,7 @@ extern void ipx_close_socket(unsigned dx_socket);
     parm [dx] modify [ax bx cx dx si di es];
 
 /* Get Internetwork Address (BX=9): ES:SI -> 10-byte net(4)+node(6). */
-extern void ipx_get_addr(void __far *buf);
+void ipx_get_addr(void __far *buf);
 #pragma aux ipx_get_addr =              \
     "push bp" "push ds"                 \
     "mov bx, 9"                         \
