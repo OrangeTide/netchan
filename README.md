@@ -87,6 +87,10 @@ make CFLAGS="-fsanitize=address,undefined -g -O1" \
 make run-tests
 ```
 
+Contributions follow [docs/coding-style.md](docs/coding-style.md), which is
+the formatting and convention guide for the project's own C. Vendored code
+under `third_party/` is exempt and keeps its upstream style.
+
 ## Using It
 
 The application owns the socket. netchan says what to send and when to call
