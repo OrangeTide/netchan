@@ -23,15 +23,37 @@
 #include <i86.h>
 #define GAME_SOCKET 0x6000
 static struct mc_ipx tp;
-static int  tp_open(int server)         { (void)server;
-                                          return mc_ipx_open(&tp, GAME_SOCKET); }
-static int  tp_recv(void *b, struct mc_addr *a)
-                                        { return mc_ipx_recv(&tp, b, MC_MTU, a); }
-static int  tp_send(const void *b, int n, const struct mc_addr *a)
-                                        { return mc_ipx_send(&tp, b, (size_t)n, a); }
-static void tp_close(void)              { mc_ipx_close(&tp); }
-static void tp_server_addr(struct mc_addr *a, const char *host)
-                                        { (void)host; mc_ipx_broadcast(&tp, a); }
+static int
+tp_open(int server)
+{
+    (void)server;
+    return mc_ipx_open(&tp, GAME_SOCKET);
+}
+
+static int
+tp_recv(void *b, struct mc_addr *a)
+{
+    return mc_ipx_recv(&tp, b, MC_MTU, a);
+}
+
+static int
+tp_send(const void *b, int n, const struct mc_addr *a)
+{
+    return mc_ipx_send(&tp, b, (size_t)n, a);
+}
+
+static void
+tp_close(void)
+{
+    mc_ipx_close(&tp);
+}
+
+static void
+tp_server_addr(struct mc_addr *a, const char *host)
+{
+    (void)host;
+    mc_ipx_broadcast(&tp, a);
+}
 static void frame_pace(void)
 {
     volatile uint32_t __far *t = (volatile uint32_t __far *)
@@ -48,16 +70,35 @@ static void frame_pace(void)
 #include <time.h>
 #define GAME_PORT 18900
 static struct mc_udp tp;
-static int  tp_open(int server)         { return mc_udp_open(&tp, NULL,
-                                              server ? GAME_PORT : 0); }
-static int  tp_recv(void *b, struct mc_addr *a)
-                                        { return mc_udp_recv(&tp, b, MC_MTU, a); }
-static int  tp_send(const void *b, int n, const struct mc_addr *a)
-                                        { return mc_udp_send(&tp, b, (size_t)n, a); }
-static void tp_close(void)              { mc_udp_close(&tp); }
-static void tp_server_addr(struct mc_addr *a, const char *host)
-                                        { mc_udp_addr(host ? host : "127.0.0.1",
-                                                      GAME_PORT, a); }
+static int
+tp_open(int server)
+{
+    return mc_udp_open(&tp, NULL, server ? GAME_PORT : 0);
+}
+
+static int
+tp_recv(void *b, struct mc_addr *a)
+{
+    return mc_udp_recv(&tp, b, MC_MTU, a);
+}
+
+static int
+tp_send(const void *b, int n, const struct mc_addr *a)
+{
+    return mc_udp_send(&tp, b, (size_t)n, a);
+}
+
+static void
+tp_close(void)
+{
+    mc_udp_close(&tp);
+}
+
+static void
+tp_server_addr(struct mc_addr *a, const char *host)
+{
+    mc_udp_addr(host ? host : "127.0.0.1", GAME_PORT, a);
+}
 static void frame_pace(void)
 {
     struct timespec ts;

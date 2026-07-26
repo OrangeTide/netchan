@@ -40,8 +40,19 @@ push(int to_server, const void *msg, size_t len)
     W.tail++;
 }
 
-static void send_to_server(void *ctx, const void *m, size_t n) { (void)ctx; push(1, m, n); }
-static void send_to_client(void *ctx, const void *m, size_t n) { (void)ctx; push(0, m, n); }
+static void
+send_to_server(void *ctx, const void *m, size_t n)
+{
+    (void)ctx;
+    push(1, m, n);
+}
+
+static void
+send_to_client(void *ctx, const void *m, size_t n)
+{
+    (void)ctx;
+    push(0, m, n);
+}
 
 /* Deliver until nobody has anything left to say. */
 static void

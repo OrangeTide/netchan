@@ -50,7 +50,12 @@ struct client {
 };
 
 static volatile sig_atomic_t running = 1;
-static void on_sig(int s) { (void)s; running = 0; }
+static void
+on_sig(int s)
+{
+    (void)s;
+    running = 0;
+}
 
 static void
 set_nonblock(int fd)

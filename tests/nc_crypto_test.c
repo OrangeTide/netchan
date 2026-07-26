@@ -190,7 +190,8 @@ test_no_midsession_rekey(void)
     struct nc_crypto a, b, other;
     nc_crypto_init(&a, 0, &(struct nc_crypto_cfg){ .eph_sk_seed = s0 });
     nc_crypto_init(&b, 1, &(struct nc_crypto_cfg){ .eph_sk_seed = s1 });
-    nc_crypto_init(&other, 0, &(struct nc_crypto_cfg){ .eph_sk_seed = s2 });   /* a third party's ephemeral */
+    /* a third party's ephemeral */
+    nc_crypto_init(&other, 0, &(struct nc_crypto_cfg){ .eph_sk_seed = s2 });
     CHECK(do_handshake(&a, &b), "handshake failed");
 
     uint8_t saved[32];
