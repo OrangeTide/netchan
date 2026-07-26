@@ -8,10 +8,22 @@ Releases are SemVer and are tagged `vMAJOR.MINOR.PATCH`. The tag is the
 release: GitHub serves a source snapshot for it, which is what
 `tools/vendor.sh` fetches.
 
-## Unreleased
+## 0.8.0 - 2026-07-26
 
 The wire protocol is untouched. Everything here is source level, so a peer
-built from this tree still talks to one built from 0.7.0.
+built from this tree still talks to one built from 0.7.0. The minor version
+moves because the source API does.
+
+### Added
+
+- `docs/coding-style.md`, the project's written C conventions, linked from the
+  README. It is written to drop into another project unchanged.
+- `make lint`, which checks the tree against that document: tabs, trailing
+  whitespace, non-ASCII, missing final newline, `#pragma once`, per-file
+  licence lines, `extern` on a function declaration, bare `-1` returns, lines
+  over 100 columns, a definition with its body on the signature line, a
+  missing tag line, and declarations below the first statement of a block. It
+  runs as its own CI job, so the conventions hold without a manual sweep.
 
 ### Changed
 
@@ -30,8 +42,13 @@ built from this tree still talks to one built from 0.7.0.
   `ks_user_exists`, `ks_keyfile_encrypted`, `mc_ipx_available`,
   `secure_link_up` and `auth_link_up`.
 - Source files no longer carry a licence line. The root `LICENSE` is the one
-  place the terms live.
-- `docs/coding-style.md` is the written convention all of the above follows.
+  place the terms live. The IDL compiler stopped emitting one into generated
+  code too, so a regenerated codec matches.
+- Declarations sit at the top of the block that uses them. Where the value
+  came from a call whose order matters, or from a read a guard clause proves
+  is in bounds, the type moved up and the assignment stayed put.
+- Doc comments in the public headers open with `/**`, so an API description is
+  distinguishable from the prose that explains a file.
 
 ### Breaking
 
@@ -46,6 +63,10 @@ built from this tree still talks to one built from 0.7.0.
 - `auth/keystore.h` guards with `KS_KEYSTORE_H` and `examples/common/sockutil.h`
   with `SU_SOCKUTIL_H`, so a vendored copy cannot collide with a host project's
   own `KEYSTORE_H` or `SOCKUTIL_H`.
+- `microchan/tests/mc_memlink.{c,h}` is renamed to `memlink.{c,h}`, matching
+  the `meml_` symbols it exports, and its guard is `MEML_MEMLINK_H`. The build
+  library is `memlink`. This is test-only and ships to nobody, but a project
+  that vendored microchan's tests has a file to rename.
 
 ## 0.7.0 - 2026-07-24
 
