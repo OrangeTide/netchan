@@ -1,6 +1,5 @@
 #!/bin/sh
 # check-symbols.sh : fail if the manual calls a netchan function that is gone
-# PUBLIC DOMAIN (CC0-1.0)
 #
 # Usage: check-symbols.sh built-manual.html src/netchan.h
 #

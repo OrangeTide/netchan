@@ -1,6 +1,5 @@
 #!/bin/sh
 # smoke_test.sh : run the chat example for real, two processes and a signal
-# PUBLIC DOMAIN (CC0-1.0)
 #
 # The unit tests drive the library. Nothing drove the example, so a crash in
 # its event loop could sit in the tree while every test passed, and one did:

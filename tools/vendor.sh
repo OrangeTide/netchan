@@ -1,6 +1,5 @@
 #!/bin/sh
 # vendor.sh : copy a release of netchan into another project's tree
-# PUBLIC DOMAIN (CC0-1.0)
 #
 # Vendoring is the supported way to use netchan, so this does the copying:
 # it fetches the source snapshot GitHub serves for a tag, takes the layers

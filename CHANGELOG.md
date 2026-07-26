@@ -20,10 +20,11 @@ moves because the source API does.
   README. It is written to drop into another project unchanged.
 - `make lint`, which checks the tree against that document: tabs, trailing
   whitespace, non-ASCII, missing final newline, `#pragma once`, per-file
-  licence lines, `extern` on a function declaration, bare `-1` returns, lines
-  over 100 columns, a definition with its body on the signature line, a
-  missing tag line, and declarations below the first statement of a block. It
-  runs as its own CI job, so the conventions hold without a manual sweep.
+  licence lines in C and in scripts, `extern` on a function declaration, bare
+  `-1` returns, lines over 100 columns, a definition with its body on the
+  signature line, a missing tag line, and declarations below the first
+  statement of a block. It runs as its own CI job, so the conventions hold
+  without a manual sweep.
 
 ### Changed
 
@@ -41,9 +42,10 @@ moves because the source API does.
   `nc_crypto_failed`, `ks_authorized_key`, `ks_check_password`,
   `ks_user_exists`, `ks_keyfile_encrypted`, `mc_ipx_available`,
   `secure_link_up` and `auth_link_up`.
-- Source files no longer carry a licence line. The root `LICENSE` is the one
-  place the terms live. The IDL compiler stopped emitting one into generated
-  code too, so a regenerated codec matches.
+- No file carries a licence line any more, C or shell or awk. The root
+  `LICENSE` is the one place the terms live, so relicensing is one edit rather
+  than a sweep. The IDL compiler stopped emitting one into generated code too,
+  so a regenerated codec matches.
 - Declarations sit at the top of the block that uses them. Where the value
   came from a call whose order matters, or from a read a guard clause proves
   is in bounds, the type moved up and the assignment stayed put.

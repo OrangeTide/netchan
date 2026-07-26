@@ -1,6 +1,5 @@
 #!/bin/sh
 # gen-api.sh : turn a netchan header into the manual's API reference
-# PUBLIC DOMAIN (CC0-1.0)
 #
 # Usage: gen-api.sh path/to/netchan.h > api.html
 #

@@ -1,6 +1,5 @@
 #!/bin/sh
 # build.sh : assemble the netchan manual into a single self-contained page
-# PUBLIC DOMAIN (CC0-1.0)
 #
 # Usage: docs/build.sh [output-dir]     (default: docs/_site)
 #

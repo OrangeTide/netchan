@@ -53,6 +53,14 @@ check_pattern "trailing whitespace" ' +$'
 check_pattern "non-ASCII character" '[^\x00-\x7F]'
 check_pattern "#pragma once (use an include guard)" 'pragma once'
 check_pattern "per-file licence line (the root LICENSE is the one place)" 'PUBLIC DOMAIN'
+
+# The same rule for shell and awk. Anchored to a comment line, so this file
+# does not report the pattern it searches for.
+script_licence=$(owned_scripts | xargs grep -n '^# *PUBLIC DOMAIN' 2>/dev/null)
+if [ -n "$script_licence" ]; then
+    fail "lint: per-file licence line in a script"
+    printf '%s\n' "$script_licence" | sed 's/^/  /'
+fi
 check_pattern "extern on a function declaration" '^extern .*\('
 check_pattern "bare -1 return (name the module's failure value)" 'return -1;'
 

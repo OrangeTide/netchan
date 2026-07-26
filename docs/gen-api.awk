@@ -1,5 +1,4 @@
 # gen-api.awk : the netchan.h -> API-reference generator proper
-# PUBLIC DOMAIN (CC0-1.0)
 #
 # Invoked as `awk -f gen-api.awk path/to/netchan.h` by gen-api.sh. Kept as a
 # standalone -f file rather than embedded in a shell single-quoted string, so

@@ -1,6 +1,5 @@
 #!/bin/sh
 # microser-gen.sh : compile a microser .idl into C structs and codecs
-# PUBLIC DOMAIN (CC0-1.0)
 #
 # Usage: microser-gen.sh input.idl output_basename
 #

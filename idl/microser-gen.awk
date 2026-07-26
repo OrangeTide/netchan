@@ -1,5 +1,4 @@
 # microser-gen.awk : the microser IDL compiler proper
-# PUBLIC DOMAIN (CC0-1.0)
 #
 # Invoked as `awk -v base=<output> -f microser-gen.awk <input.idl>` by
 # microser-gen.sh. Kept as a standalone -f file rather than embedded in a
