@@ -70,10 +70,18 @@
 #define NC_AUTH_MAX_MSG     256
 #define NC_AUTH_MAX_TRIES   6
 
+#define NC_AUTH_OK  (0)
+#define NC_AUTH_ERR (-1)
+
+/*
+ * Conversation state, as reported by nc_auth_state. These are states, not
+ * return codes: NC_AUTH_STATE_OK is 1 and says the client is authenticated,
+ * while NC_AUTH_OK is 0 and says a call succeeded.
+ */
 enum {
-    NC_AUTH_PENDING,        /* conversation still in progress */
-    NC_AUTH_OK,             /* the client is authenticated */
-    NC_AUTH_DENIED,         /* no method left, or too many attempts */
+    NC_AUTH_STATE_PENDING,        /* conversation still in progress */
+    NC_AUTH_STATE_OK,             /* the client is authenticated */
+    NC_AUTH_STATE_DENIED,         /* no method left, or too many attempts */
 };
 
 /* What the client conversation is waiting for. See nc_auth_needs. */
@@ -129,7 +137,7 @@ void nc_auth_server_init(struct nc_auth *a, const uint8_t sid[32],
 /* Client only: emit the opening HELLO. Harmless on the server. */
 void nc_auth_start(struct nc_auth *a);
 
-/* Feed one complete message. Returns 0, or -1 if the peer sent something
+/* Feed one complete message. Returns NC_AUTH_OK, or NC_AUTH_ERR if the peer
  * malformed or out of order, which also ends the conversation as denied. */
 int nc_auth_feed(struct nc_auth *a, const void *msg, size_t len);
 
@@ -155,7 +163,8 @@ void nc_auth_supply_password(struct nc_auth *a, const char *password);
 
 int nc_auth_state(const struct nc_auth *a);
 
-/* The authenticated name. Only meaningful once the state is NC_AUTH_OK. */
+/* The authenticated name. Only meaningful once the state is
+ * NC_AUTH_STATE_OK. */
 const char *nc_auth_user(const struct nc_auth *a);
 
 /*

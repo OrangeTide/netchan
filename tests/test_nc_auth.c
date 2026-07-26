@@ -180,27 +180,27 @@ main(void)
     /* 1. Public key on file: instant login, password never requested. */
     client_has_key = 1;
     run(sid_a, "alice", &cs, &ss);
-    check("public key logs in", cs == NC_AUTH_OK && ss == NC_AUTH_OK);
+    check("public key logs in", cs == NC_AUTH_STATE_OK && ss == NC_AUTH_STATE_OK);
     check("server learned the name", strcmp(server_saw, "alice") == 0);
 
     /* 2. No key enrolled: the client falls back and the password works. */
     client_has_key = 0;
     client_password = "correct horse";
     run(sid_a, "alice", &cs, &ss);
-    check("password fallback logs in", cs == NC_AUTH_OK && ss == NC_AUTH_OK);
+    check("password fallback logs in", cs == NC_AUTH_STATE_OK && ss == NC_AUTH_STATE_OK);
 
     /* 3. Wrong password: denied, and no method is left to retry. */
     client_password = "hunter2";
     run(sid_a, "alice", &cs, &ss);
     check("wrong password is denied",
-          cs == NC_AUTH_DENIED && ss != NC_AUTH_OK);
+          cs == NC_AUTH_STATE_DENIED && ss != NC_AUTH_STATE_OK);
 
     /* 4. A key that is not on the server's list, for a name that is. */
     client_has_key = 1;
     client_password = "hunter2";
     run(sid_a, "mallory", &cs, &ss);
     check("unauthorised name is denied",
-          cs == NC_AUTH_DENIED && ss != NC_AUTH_OK);
+          cs == NC_AUTH_STATE_DENIED && ss != NC_AUTH_STATE_OK);
 
     /* 5. The session binding. Capture the PUBKEY message from a successful
      *    conversation and replay it into a server that has a different
@@ -257,7 +257,7 @@ main(void)
         }
         nc_auth_feed(&server2, captured, captured_len);
         check("replayed signature is rejected",
-              nc_auth_state(&server2) != NC_AUTH_OK);
+              nc_auth_state(&server2) != NC_AUTH_STATE_OK);
     }
 
     if (failures)

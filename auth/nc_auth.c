@@ -45,7 +45,7 @@ nc_auth_client_init(struct nc_auth *a, const uint8_t sid[32], const char *user,
 {
     memset(a, 0, sizeof(*a));
     a->server = 0;
-    a->state = NC_AUTH_PENDING;
+    a->state = NC_AUTH_STATE_PENDING;
     a->need = NC_AUTH_NEED_NOTHING;
     memcpy(a->sid, sid, 32);
     if (user) {
@@ -63,7 +63,7 @@ nc_auth_server_init(struct nc_auth *a, const uint8_t sid[32],
 {
     memset(a, 0, sizeof(*a));
     a->server = 1;
-    a->state = NC_AUTH_PENDING;
+    a->state = NC_AUTH_STATE_PENDING;
     memcpy(a->sid, sid, 32);
     if (cb)
         a->scb = *cb;
@@ -89,7 +89,7 @@ nc_auth_start(struct nc_auth *a)
     uint8_t msg[2 + NC_AUTH_MAX_USER];
     size_t ulen;
 
-    if (a->server || a->state != NC_AUTH_PENDING)
+    if (a->server || a->state != NC_AUTH_STATE_PENDING)
         return;
 
     ulen = strlen(a->user);
@@ -115,7 +115,7 @@ nc_auth_start(struct nc_auth *a)
 static void
 client_try_next(struct nc_auth *a)
 {
-    if (a->state != NC_AUTH_PENDING)
+    if (a->state != NC_AUTH_STATE_PENDING)
         return;
 
     if (a->avail & NC_AUTH_M_PUBKEY) {
@@ -130,7 +130,7 @@ client_try_next(struct nc_auth *a)
     }
 
     a->need = NC_AUTH_NEED_NOTHING;
-    a->state = NC_AUTH_DENIED;
+    a->state = NC_AUTH_STATE_DENIED;
 }
 
 int
@@ -196,30 +196,30 @@ client_feed(struct nc_auth *a, const uint8_t *msg, size_t len)
     switch (msg[0]) {
     case MSG_METHODS:
         if (len != 2)
-            return -1;
+            return NC_AUTH_ERR;
         a->avail = msg[1];
         if (a->avail == 0) {
-            a->state = NC_AUTH_DENIED;
-            return 0;
+            a->state = NC_AUTH_STATE_DENIED;
+            return NC_AUTH_OK;
         }
         client_try_next(a);
-        return 0;
+        return NC_AUTH_OK;
 
     case MSG_OK:
-        a->state = NC_AUTH_OK;
-        return 0;
+        a->state = NC_AUTH_STATE_OK;
+        return NC_AUTH_OK;
 
     case MSG_FAIL:
         if (len != 2)
-            return -1;
+            return NC_AUTH_ERR;
         /* The server tells us what is still worth trying, so we never guess
          * and never retry a method it has already ruled out. */
         a->avail &= msg[1];
         client_try_next(a);
-        return 0;
+        return NC_AUTH_OK;
 
     default:
-        return -1;
+        return NC_AUTH_ERR;
     }
 }
 
@@ -243,7 +243,7 @@ server_deny(struct nc_auth *a, unsigned spent)
     a->avail &= ~spent;
     if (++a->tries >= NC_AUTH_MAX_TRIES || a->avail == 0) {
         a->avail = 0;
-        a->state = NC_AUTH_DENIED;
+        a->state = NC_AUTH_STATE_DENIED;
     }
     server_reply(a, MSG_FAIL, a->avail, 1);
 }
@@ -256,18 +256,18 @@ server_feed(struct nc_auth *a, const uint8_t *msg, size_t len)
         size_t ulen;
 
         if (a->greeted || len < 2)
-            return -1;
+            return NC_AUTH_ERR;
         ulen = msg[1];
         if (ulen > NC_AUTH_MAX_USER || len != 2 + ulen)
-            return -1;
+            return NC_AUTH_ERR;
         memcpy(a->user, msg + 2, ulen);
         a->user[ulen] = '\0';
         a->greeted = 1;
         a->avail = a->scb.methods ? a->scb.methods(a->scb.ctx, a->user) : 0;
         if (a->avail == 0)
-            a->state = NC_AUTH_DENIED;
+            a->state = NC_AUTH_STATE_DENIED;
         server_reply(a, MSG_METHODS, a->avail, 1);
-        return 0;
+        return NC_AUTH_OK;
     }
 
     case MSG_PUBKEY: {
@@ -276,10 +276,10 @@ server_feed(struct nc_auth *a, const uint8_t *msg, size_t len)
         const uint8_t *sig = msg + 33;
 
         if (!a->greeted || len != 1 + 32 + 64)
-            return -1;
+            return NC_AUTH_ERR;
         if (!(a->avail & NC_AUTH_M_PUBKEY)) {
             server_deny(a, 0);
-            return 0;
+            return NC_AUTH_OK;
         }
         /* Possession of the secret key first, authorisation second. The
          * digest is bound to this session, so a signature lifted from
@@ -287,12 +287,12 @@ server_feed(struct nc_auth *a, const uint8_t *msg, size_t len)
         nc_auth_signed_digest(digest, a->sid, a->user, pk);
         if (crypto_eddsa_check(sig, pk, digest, sizeof(digest)) == 0 &&
             a->scb.check_key && a->scb.check_key(a->scb.ctx, a->user, pk)) {
-            a->state = NC_AUTH_OK;
+            a->state = NC_AUTH_STATE_OK;
             server_reply(a, MSG_OK, 0, 0);
-            return 0;
+            return NC_AUTH_OK;
         }
         server_deny(a, NC_AUTH_M_PUBKEY);
-        return 0;
+        return NC_AUTH_OK;
     }
 
     case MSG_PASSWORD: {
@@ -301,13 +301,13 @@ server_feed(struct nc_auth *a, const uint8_t *msg, size_t len)
         int ok;
 
         if (!a->greeted || len < 2)
-            return -1;
+            return NC_AUTH_ERR;
         plen = msg[1];
         if (plen > NC_AUTH_MAX_PASS - 1 || len != 2 + plen)
-            return -1;
+            return NC_AUTH_ERR;
         if (!(a->avail & NC_AUTH_M_PASSWORD)) {
             server_deny(a, 0);
-            return 0;
+            return NC_AUTH_OK;
         }
         memcpy(pass, msg + 2, plen);
         pass[plen] = '\0';
@@ -315,16 +315,16 @@ server_feed(struct nc_auth *a, const uint8_t *msg, size_t len)
              a->scb.check_password(a->scb.ctx, a->user, pass);
         crypto_wipe(pass, sizeof(pass));
         if (ok) {
-            a->state = NC_AUTH_OK;
+            a->state = NC_AUTH_STATE_OK;
             server_reply(a, MSG_OK, 0, 0);
-            return 0;
+            return NC_AUTH_OK;
         }
         server_deny(a, NC_AUTH_M_PASSWORD);
-        return 0;
+        return NC_AUTH_OK;
     }
 
     default:
-        return -1;
+        return NC_AUTH_ERR;
     }
 }
 
@@ -334,11 +334,11 @@ nc_auth_feed(struct nc_auth *a, const void *msg, size_t len)
     const uint8_t *m = msg;
     int rc;
 
-    if (len < 1 || len > NC_AUTH_MAX_MSG || a->state != NC_AUTH_PENDING)
-        return -1;
+    if (len < 1 || len > NC_AUTH_MAX_MSG || a->state != NC_AUTH_STATE_PENDING)
+        return NC_AUTH_ERR;
 
     rc = a->server ? server_feed(a, m, len) : client_feed(a, m, len);
     if (rc != 0)
-        a->state = NC_AUTH_DENIED;
+        a->state = NC_AUTH_STATE_DENIED;
     return rc;
 }

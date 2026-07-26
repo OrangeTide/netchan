@@ -6,6 +6,9 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#define KS_OK  (0)
+#define KS_ERR (-1)
+
 /*
  * Five small text files, all deliberately in the shape ssh uses, because the
  * shape is the point: the trust decisions live in files an administrator can

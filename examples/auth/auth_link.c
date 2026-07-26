@@ -179,12 +179,12 @@ settle_auth(struct auth_link *al)
 
     settle_need(al);
 
-    if (nc_auth_state(&al->auth) == NC_AUTH_OK) {
+    if (nc_auth_state(&al->auth) == NC_AUTH_STATE_OK) {
         snprintf(al->user, sizeof(al->user), "%s", nc_auth_user(&al->auth));
         al->up = 1;
         if (al->cb.on_up)
             al->cb.on_up(al, al->cb.user);
-    } else if (nc_auth_state(&al->auth) == NC_AUTH_DENIED) {
+    } else if (nc_auth_state(&al->auth) == NC_AUTH_STATE_DENIED) {
         fire_down(al, AL_DOWN_AUTH);
     }
 }

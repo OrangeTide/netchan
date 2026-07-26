@@ -55,7 +55,7 @@ ks_random(uint8_t *buf, size_t n)
                            BCRYPT_USE_SYSTEM_PREFERRED_RNG) == 0 ? 0 : -1;
 #elif defined(KS_RANDOM_ARC4)
     arc4random_buf(buf, n);
-    return 0;
+    return KS_OK;
 #else
     FILE *f;
     size_t got;
@@ -74,12 +74,12 @@ ks_random(uint8_t *buf, size_t n)
         off += (size_t)r;
     }
     if (off == n)
-        return 0;
+        return KS_OK;
 #  endif
 
     f = fopen("/dev/urandom", "rb");
     if (!f)
-        return -1;
+        return KS_ERR;
     got = fread(buf, 1, n, f);
     fclose(f);
     return got == n ? 0 : -1;
@@ -104,23 +104,23 @@ hex_nibble(char ch)
     if (ch >= '0' && ch <= '9') return ch - '0';
     if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
     if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
-    return -1;
+    return KS_ERR;
 }
 
 int
 ks_hex_decode(uint8_t *out, size_t n, const char *in)
 {
     if (strlen(in) != n * 2)
-        return -1;
+        return KS_ERR;
     for (size_t i = 0; i < n; i++) {
         int hi = hex_nibble(in[i * 2]);
         int lo = hex_nibble(in[i * 2 + 1]);
 
         if (hi < 0 || lo < 0)
-            return -1;
+            return KS_ERR;
         out[i] = (uint8_t)((hi << 4) | lo);
     }
-    return 0;
+    return KS_OK;
 }
 
 /*
@@ -223,11 +223,11 @@ ks_known_host_add(const char *path, const char *host, const uint8_t pk[32])
     FILE *f = open_private(path, "a", O_WRONLY | O_CREAT | O_APPEND);
 
     if (!f)
-        return -1;
+        return KS_ERR;
     ks_hex_encode(hex, pk, 32);
     fprintf(f, "%s %s\n", host, hex);
     fclose(f);
-    return 0;
+    return KS_OK;
 }
 
 /****************************************************************
@@ -248,14 +248,14 @@ ks_host_key(const char *path, uint8_t sk[32])
     }
 
     if (ks_random(sk, 32) != 0)
-        return -1;
+        return KS_ERR;
     f = open_private(path, "w", O_WRONLY | O_CREAT | O_TRUNC);
     if (!f)
-        return -1;
+        return KS_ERR;
     ks_hex_encode(hex, sk, 32);
     fprintf(f, "%s\n", hex);
     fclose(f);
-    return 0;
+    return KS_OK;
 }
 
 /****************************************************************
@@ -360,20 +360,20 @@ ks_passwd_add(const char *path, const char *user, const char *password)
     FILE *f;
 
     if (ks_random(salt, sizeof(salt)) != 0)
-        return -1;
+        return KS_ERR;
     stretch(hash, password, salt);
 
     f = open_private(path, "a", O_WRONLY | O_CREAT | O_APPEND);
     if (!f) {
         crypto_wipe(hash, sizeof(hash));
-        return -1;
+        return KS_ERR;
     }
     ks_hex_encode(salt_hex, salt, sizeof(salt));
     ks_hex_encode(hash_hex, hash, sizeof(hash));
     fprintf(f, "%s %s %s\n", user, salt_hex, hash_hex);
     fclose(f);
     crypto_wipe(hash, sizeof(hash));
-    return 0;
+    return KS_OK;
 }
 
 /****************************************************************
@@ -390,13 +390,13 @@ ks_keyfile_generate(const char *path, const char *passphrase, uint8_t pk_out[32]
     FILE *f;
 
     if (ks_random(seed, sizeof(seed)) != 0)
-        return -1;
+        return KS_ERR;
     crypto_eddsa_key_pair(sk, pk, seed);   /* wipes seed */
 
     f = open_private(path, "w", O_WRONLY | O_CREAT | O_TRUNC);
     if (!f) {
         crypto_wipe(sk, sizeof(sk));
-        return -1;
+        return KS_ERR;
     }
 
     fprintf(f, "%s\n", KEYFILE_MAGIC);
@@ -409,7 +409,7 @@ ks_keyfile_generate(const char *path, const char *passphrase, uint8_t pk_out[32]
         if (ks_random(salt, sizeof(salt)) != 0) {
             fclose(f);
             crypto_wipe(sk, sizeof(sk));
-            return -1;
+            return KS_ERR;
         }
         stretch(key, passphrase, salt);
         /* The salt is fresh per file and the key is used once, so a fixed
@@ -433,7 +433,7 @@ ks_keyfile_generate(const char *path, const char *passphrase, uint8_t pk_out[32]
     if (pk_out)
         memcpy(pk_out, pk, 32);
     crypto_wipe(sk, sizeof(sk));
-    return 0;
+    return KS_OK;
 }
 
 /* Pull the "sk" and "kdf" lines out of a key file without committing to
@@ -448,13 +448,13 @@ keyfile_scan(const char *path, char *kdf, size_t kdf_cap,
     int have_pk = 0, have_sk = 0;
 
     if (!f)
-        return -1;
+        return KS_ERR;
 
     kdf[0] = salt_hex[0] = sk_hex[0] = '\0';
     if (!fgets(line, sizeof(line), f) ||
         strncmp(line, KEYFILE_MAGIC, strlen(KEYFILE_MAGIC)) != 0) {
         fclose(f);
-        return -1;
+        return KS_ERR;
     }
     while (fgets(line, sizeof(line), f)) {
         if (sscanf(line, "%511s %511s", key, val) != 2)
@@ -496,7 +496,7 @@ ks_keyfile_load(const char *path, const char *passphrase,
 
     if (keyfile_scan(path, kdf, sizeof(kdf), sk_hex, sizeof(sk_hex),
                      salt_hex, sizeof(salt_hex), pk) != 0)
-        return -1;
+        return KS_ERR;
 
     if (strcmp(kdf, "none") == 0)
         return ks_hex_decode(sk, 64, sk_hex) == 0 ? 0 : -1;
@@ -504,7 +504,7 @@ ks_keyfile_load(const char *path, const char *passphrase,
     if (strcmp(kdf, "argon2id") != 0 ||
         ks_hex_decode(salt, sizeof(salt), salt_hex) != 0 ||
         ks_hex_decode(sealed, sizeof(sealed), sk_hex) != 0)
-        return -1;
+        return KS_ERR;
 
     if (!passphrase)
         return -2;
