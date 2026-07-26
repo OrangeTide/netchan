@@ -89,14 +89,17 @@ pump_both(struct netchan_conn *client, struct netchan_conn *server,
 static void
 test_handshake(void)
 {
-    TEST(handshake);
-
     struct netchan_conn *client = netchan_open(0);
     struct netchan_conn *server = netchan_open(1);
+
+    struct nc_addr caddr;
+    struct nc_addr saddr;
+    struct netchan_event ev;
+    TEST(handshake);
     CHECK(client && server, "alloc failed");
 
-    struct nc_addr caddr = make_addr(0x7f000001, 10000);
-    struct nc_addr saddr = make_addr(0x7f000001, 20000);
+    caddr = make_addr(0x7f000001, 10000);
+    saddr = make_addr(0x7f000001, 20000);
 
     netchan_connect(client, &saddr);
     CHECK(netchan_state(client) == NETCHAN_STATE_CONNECTING, "client not connecting");
@@ -106,7 +109,6 @@ test_handshake(void)
     CHECK(netchan_state(server) == NETCHAN_STATE_CONNECTING, "server not connecting");
 
     /* server accepts */
-    struct netchan_event ev;
     netchan_accept(server);
     CHECK(netchan_state(server) == NETCHAN_STATE_CONNECTED, "server not connected");
 
@@ -130,14 +132,19 @@ test_handshake(void)
 static void
 test_unreliable_datagram(void)
 {
-    TEST(unreliable_datagram);
-
     struct netchan_conn *client = netchan_open(0);
     struct netchan_conn *server = netchan_open(1);
 
     struct nc_addr caddr = make_addr(0x7f000001, 10001);
     struct nc_addr saddr = make_addr(0x7f000001, 20001);
 
+    struct netchan_event ev;
+    struct netchan_chan *sch;
+    const char *msg;
+    int wr;
+    char buf[256];
+    int rd;
+    TEST(unreliable_datagram);
     netchan_connect(client, &saddr);
     pump(client, server, &caddr);
     netchan_accept(server);
@@ -146,7 +153,6 @@ test_unreliable_datagram(void)
     CHECK(netchan_state(client) == NETCHAN_STATE_CONNECTED, "not connected");
 
     /* drain handshake events */
-    struct netchan_event ev;
     while (netchan_poll(client, &ev)) {}
     while (netchan_poll(server, &ev)) {}
 
@@ -161,7 +167,7 @@ test_unreliable_datagram(void)
     /* server should have CHAN_OPEN event */
     CHECK(netchan_poll(server, &ev) && ev.type == NETCHAN_EV_CHAN_OPEN,
           "no chan_open event");
-    struct netchan_chan *sch = ev.ch;
+    sch = ev.ch;
     CHECK(sch != NULL, "server channel is null");
 
     /* server sends window_update back (from chan_open processing) */
@@ -171,8 +177,8 @@ test_unreliable_datagram(void)
     CHECK(netchan_chan_state(ch) == 1, "client channel not open");
 
     /* write a message */
-    const char *msg = "hello unreliable";
-    int wr = netchan_chan_write(ch, msg, strlen(msg));
+    msg = "hello unreliable";
+    wr = netchan_chan_write(ch, msg, strlen(msg));
     CHECK(wr == (int)strlen(msg), "write failed");
 
     /* pump data to server */
@@ -183,8 +189,7 @@ test_unreliable_datagram(void)
           "no data event");
 
     /* read the data */
-    char buf[256];
-    int rd = netchan_chan_read(sch, buf, sizeof(buf));
+    rd = netchan_chan_read(sch, buf, sizeof(buf));
     CHECK(rd == (int)strlen(msg), "read wrong size");
     CHECK(memcmp(buf, msg, rd) == 0, "data mismatch");
 
@@ -196,14 +201,19 @@ test_unreliable_datagram(void)
 static void
 test_reliable_datagram(void)
 {
-    TEST(reliable_datagram);
-
     struct netchan_conn *client = netchan_open(0);
     struct netchan_conn *server = netchan_open(1);
 
     struct nc_addr caddr = make_addr(0x7f000001, 10002);
     struct nc_addr saddr = make_addr(0x7f000001, 20002);
 
+    struct netchan_event ev;
+    const char *msg;
+    int wr;
+    struct netchan_chan *sch;
+    char buf[256];
+    int rd;
+    TEST(reliable_datagram);
     netchan_connect(client, &saddr);
     pump(client, server, &caddr);
     netchan_accept(server);
@@ -211,7 +221,6 @@ test_reliable_datagram(void)
               &caddr,
               &saddr);
 
-    struct netchan_event ev;
     while (netchan_poll(client, &ev)) {}
     while (netchan_poll(server, &ev)) {}
 
@@ -232,8 +241,8 @@ test_reliable_datagram(void)
     CHECK(netchan_chan_state(ch) == 1, "client channel not open");
 
     /* send a message */
-    const char *msg = "reliable payload here";
-    int wr = netchan_chan_write(ch, msg, strlen(msg));
+    msg = "reliable payload here";
+    wr = netchan_chan_write(ch, msg, strlen(msg));
     CHECK(wr == (int)strlen(msg), "write failed");
 
     /* pump data and ACK */
@@ -242,15 +251,14 @@ test_reliable_datagram(void)
               &saddr);
 
     /* find the server's channel */
-    struct netchan_chan *sch = NULL;
+    sch = NULL;
     while (netchan_poll(server, &ev)) {
         if (ev.type == NETCHAN_EV_DATA && ev.ch)
             sch = ev.ch;
     }
     CHECK(sch != NULL, "no data event on server");
 
-    char buf[256];
-    int rd = netchan_chan_read(sch, buf, sizeof(buf));
+    rd = netchan_chan_read(sch, buf, sizeof(buf));
     CHECK(rd == (int)strlen(msg), "read wrong size");
     CHECK(memcmp(buf, msg, rd) == 0, "data mismatch");
 
@@ -262,14 +270,20 @@ test_reliable_datagram(void)
 static void
 test_bidirectional_channels(void)
 {
-    TEST(bidirectional_channels);
-
     struct netchan_conn *client = netchan_open(0);
     struct netchan_conn *server = netchan_open(1);
 
     struct nc_addr caddr = make_addr(0x7f000001, 10003);
     struct nc_addr saddr = make_addr(0x7f000001, 20003);
 
+    struct netchan_event ev;
+    struct netchan_chan *s_recv_input;
+    struct netchan_chan *s_send_state;
+    const char *input;
+    char buf[256];
+    int rd;
+    const char *state;
+    TEST(bidirectional_channels);
     netchan_connect(client, &saddr);
     pump(client, server, &caddr);
     netchan_accept(server);
@@ -277,7 +291,6 @@ test_bidirectional_channels(void)
               &caddr,
               &saddr);
 
-    struct netchan_event ev;
     while (netchan_poll(client, &ev)) {}
     while (netchan_poll(server, &ev)) {}
 
@@ -295,8 +308,8 @@ test_bidirectional_channels(void)
               &saddr);
 
     /* find server's channels */
-    struct netchan_chan *s_recv_input = NULL;
-    struct netchan_chan *s_send_state = NULL;
+    s_recv_input = NULL;
+    s_send_state = NULL;
     while (netchan_poll(server, &ev)) {
         if (ev.type == NETCHAN_EV_CHAN_OPEN && ev.ch) {
             if (netchan_chan_id(ev.ch) == netchan_chan_id(c_send))
@@ -318,22 +331,20 @@ test_bidirectional_channels(void)
     while (netchan_poll(server, &ev)) {}
 
     /* client -> server: input */
-    const char *input = "move_left";
+    input = "move_left";
     netchan_chan_write(c_send, input, strlen(input));
     pump_both(client, server,
               &caddr,
               &saddr);
 
     /* read on server */
-    char buf[256];
-    int rd;
     while (netchan_poll(server, &ev)) {}
     rd = netchan_chan_read(s_recv_input, buf, sizeof(buf));
     CHECK(rd == (int)strlen(input), "input read wrong size");
     CHECK(memcmp(buf, input, rd) == 0, "input data mismatch");
 
     /* server -> client: state */
-    const char *state = "pos:10,5";
+    state = "pos:10,5";
     netchan_chan_write(s_send_state, state, strlen(state));
     pump_both(client, server,
               &caddr,
@@ -352,14 +363,16 @@ test_bidirectional_channels(void)
 static void
 test_multiple_messages(void)
 {
-    TEST(multiple_reliable_messages);
-
     struct netchan_conn *client = netchan_open(0);
     struct netchan_conn *server = netchan_open(1);
 
     struct nc_addr caddr = make_addr(0x7f000001, 10004);
     struct nc_addr saddr = make_addr(0x7f000001, 20004);
 
+    struct netchan_event ev;
+    struct netchan_chan *sch;
+    char buf[256];
+    TEST(multiple_reliable_messages);
     netchan_connect(client, &saddr);
     pump(client, server, &caddr);
     netchan_accept(server);
@@ -367,7 +380,6 @@ test_multiple_messages(void)
               &caddr,
               &saddr);
 
-    struct netchan_event ev;
     while (netchan_poll(client, &ev)) {}
     while (netchan_poll(server, &ev)) {}
 
@@ -384,8 +396,10 @@ test_multiple_messages(void)
     /* send 10 messages */
     for (int i = 0; i < 10; i++) {
         char msg[32];
+        int wr;
+
         snprintf(msg, sizeof(msg), "message-%d", i);
-        int wr = netchan_chan_write(ch, msg, strlen(msg));
+        wr = netchan_chan_write(ch, msg, strlen(msg));
         CHECK(wr > 0, "write failed");
     }
 
@@ -395,18 +409,19 @@ test_multiple_messages(void)
               &saddr);
 
     /* find server channel and read all messages */
-    struct netchan_chan *sch = NULL;
+    sch = NULL;
     while (netchan_poll(server, &ev)) {
         if (ev.type == NETCHAN_EV_DATA && ev.ch)
             sch = ev.ch;
     }
     CHECK(sch != NULL, "no server channel with data");
 
-    char buf[256];
     for (int i = 0; i < 10; i++) {
         char expected[32];
+        int rd;
+
         snprintf(expected, sizeof(expected), "message-%d", i);
-        int rd = netchan_chan_read(sch, buf, sizeof(buf));
+        rd = netchan_chan_read(sch, buf, sizeof(buf));
         CHECK(rd == (int)strlen(expected), "read wrong size");
         CHECK(memcmp(buf, expected, rd) == 0, "data mismatch");
     }
@@ -422,14 +437,17 @@ test_multiple_messages(void)
 static void
 test_connection_migration(void)
 {
-    TEST(connection_migration);
-
     struct netchan_conn *client = netchan_open(0);
     struct netchan_conn *server = netchan_open(1);
 
     struct nc_addr caddr = make_addr(0x7f000001, 10005);
     struct nc_addr saddr = make_addr(0x7f000001, 20005);
 
+    struct netchan_event ev;
+    const char *msg;
+    struct nc_addr new_caddr;
+    int found;
+    TEST(connection_migration);
     netchan_connect(client, &saddr);
     pump(client, server, &caddr);
     netchan_accept(server);
@@ -437,7 +455,6 @@ test_connection_migration(void)
               &caddr,
               &saddr);
 
-    struct netchan_event ev;
     while (netchan_poll(client, &ev)) {}
     while (netchan_poll(server, &ev)) {}
 
@@ -451,15 +468,15 @@ test_connection_migration(void)
     while (netchan_poll(server, &ev)) {}
 
     /* write data from new address */
-    const char *msg = "from_new_addr";
+    msg = "from_new_addr";
     netchan_chan_write(ch, msg, strlen(msg));
 
     /* client now has a new address */
-    struct nc_addr new_caddr = make_addr(0x0a000001, 30000);
+    new_caddr = make_addr(0x0a000001, 30000);
     pump(client, server, &new_caddr);
 
     /* server should still process the data */
-    int found = 0;
+    found = 0;
     while (netchan_poll(server, &ev)) {
         if (ev.type == NETCHAN_EV_DATA)
             found = 1;
@@ -474,14 +491,15 @@ test_connection_migration(void)
 static void
 test_channel_close(void)
 {
-    TEST(channel_close);
-
     struct netchan_conn *client = netchan_open(0);
     struct netchan_conn *server = netchan_open(1);
 
     struct nc_addr caddr = make_addr(0x7f000001, 10006);
     struct nc_addr saddr = make_addr(0x7f000001, 20006);
 
+    struct netchan_event ev;
+    int found_close;
+    TEST(channel_close);
     netchan_connect(client, &saddr);
     pump(client, server, &caddr);
     netchan_accept(server);
@@ -489,7 +507,6 @@ test_channel_close(void)
               &caddr,
               &saddr);
 
-    struct netchan_event ev;
     while (netchan_poll(client, &ev)) {}
     while (netchan_poll(server, &ev)) {}
 
@@ -506,7 +523,7 @@ test_channel_close(void)
     pump(client, server, &caddr);
 
     /* server should get CHAN_CLOSE */
-    int found_close = 0;
+    found_close = 0;
     while (netchan_poll(server, &ev)) {
         if (ev.type == NETCHAN_EV_CHAN_CLOSE)
             found_close = 1;
@@ -521,17 +538,18 @@ test_channel_close(void)
 static void
 test_peek_id(void)
 {
+    uint8_t pkt[16];
+    uint32_t id;
     TEST(peek_id);
 
     /* build a fake INIT packet */
-    uint8_t pkt[16];
     pkt[0] = 0x01; /* INIT flag */
     pkt[1] = 0xDE;
     pkt[2] = 0xAD;
     pkt[3] = 0xBE;
     pkt[4] = 0xEF;
 
-    uint32_t id = netchan_peek_id(pkt, 5);
+    id = netchan_peek_id(pkt, 5);
     CHECK(id == 0xDEADBEEF, "peek_id wrong value");
 
     /* too short */
@@ -543,14 +561,15 @@ test_peek_id(void)
 static void
 test_graceful_disconnect(void)
 {
-    TEST(graceful_disconnect);
-
     struct netchan_conn *client = netchan_open(0);
     struct netchan_conn *server = netchan_open(1);
 
     struct nc_addr caddr = make_addr(0x7f000001, 10007);
     struct nc_addr saddr = make_addr(0x7f000001, 20007);
 
+    struct netchan_event ev;
+    int saw_disconnect;
+    TEST(graceful_disconnect);
     netchan_connect(client, &saddr);
     pump(client, server, &caddr);
     netchan_accept(server);
@@ -558,7 +577,6 @@ test_graceful_disconnect(void)
               &caddr,
               &saddr);
 
-    struct netchan_event ev;
     while (netchan_poll(client, &ev)) {}
     while (netchan_poll(server, &ev)) {}
 
@@ -574,7 +592,7 @@ test_graceful_disconnect(void)
      * sent, which is why a graceful shutdown needs disconnect-then-flush.) */
     pump(client, server, &caddr);
 
-    int saw_disconnect = 0;
+    saw_disconnect = 0;
     while (netchan_poll(server, &ev))
         if (ev.type == NETCHAN_EV_DISCONNECTED)
             saw_disconnect = 1;
@@ -593,20 +611,20 @@ test_graceful_disconnect(void)
 static void
 test_simultaneous_disconnect(void)
 {
-    TEST(simultaneous_disconnect);
-
     struct netchan_conn *client = netchan_open(0);
     struct netchan_conn *server = netchan_open(1);
 
     struct nc_addr caddr = make_addr(0x7f000001, 10013);
     struct nc_addr saddr = make_addr(0x7f000001, 20013);
 
+    struct netchan_event ev;
+    int events;
+    TEST(simultaneous_disconnect);
     netchan_connect(client, &saddr);
     pump(client, server, &caddr);
     netchan_accept(server);
     pump_both(client, server, &caddr, &saddr);
 
-    struct netchan_event ev;
     while (netchan_poll(client, &ev)) {}
     while (netchan_poll(server, &ev)) {}
 
@@ -625,7 +643,7 @@ test_simultaneous_disconnect(void)
     CHECK(netchan_state(server) == NETCHAN_STATE_CLOSED,
           "server did not reach CLOSED");
 
-    int events = 0;
+    events = 0;
     while (netchan_poll(client, &ev))
         if (ev.type == NETCHAN_EV_DISCONNECTED)
             events++;
@@ -648,34 +666,34 @@ test_simultaneous_disconnect(void)
 static void
 test_duplicate_disconnect(void)
 {
-    TEST(duplicate_disconnect);
-
     struct netchan_conn *client = netchan_open(0);
     struct netchan_conn *server = netchan_open(1);
 
     struct nc_addr caddr = make_addr(0x7f000001, 10012);
     struct nc_addr saddr = make_addr(0x7f000001, 20012);
 
+    struct netchan_event ev;
+    uint8_t bye[2048];
+    struct nc_addr to;
+    size_t byelen;
+    int events;
+    TEST(duplicate_disconnect);
     netchan_connect(client, &saddr);
     pump(client, server, &caddr);
     netchan_accept(server);
     pump_both(client, server, &caddr, &saddr);
 
-    struct netchan_event ev;
     while (netchan_poll(client, &ev)) {}
     while (netchan_poll(server, &ev)) {}
 
     /* Keep the datagram carrying the DISCONNECT so it can be delivered a
      * second time, the way a duplicating network would. */
-    uint8_t bye[2048];
-    struct nc_addr to;
-    size_t byelen;
 
     netchan_disconnect(client);
     byelen = netchan_send_next(client, bye, sizeof(bye), &to);
     CHECK(byelen != 0, "disconnect queued no frame");
 
-    int events = 0;
+    events = 0;
     netchan_feed(server, bye, byelen, &caddr);
     while (netchan_poll(server, &ev))
         if (ev.type == NETCHAN_EV_DISCONNECTED)
@@ -705,18 +723,23 @@ test_duplicate_disconnect(void)
 static void
 test_disconnect_outside_connected(void)
 {
-    TEST(disconnect_outside_connected);
-
     uint8_t buf[2048];
     struct nc_addr to;
 
+    struct netchan_conn *client;
+    struct netchan_conn *server;
+    struct nc_addr caddr;
+    struct nc_addr saddr;
+    uint8_t init[2048];
+    size_t initlen;
+    TEST(disconnect_outside_connected);
     netchan_disconnect(NULL);   /* must not crash */
 
-    struct netchan_conn *client = netchan_open(0);
-    struct netchan_conn *server = netchan_open(1);
+    client = netchan_open(0);
+    server = netchan_open(1);
 
-    struct nc_addr caddr = make_addr(0x7f000001, 10011);
-    struct nc_addr saddr = make_addr(0x7f000001, 20011);
+    caddr = make_addr(0x7f000001, 10011);
+    saddr = make_addr(0x7f000001, 20011);
 
     /* NEW: nothing has been said to anyone yet. */
     netchan_disconnect(client);
@@ -728,8 +751,6 @@ test_disconnect_outside_connected(void)
     /* CONNECTING: hold the connect frame rather than delivering it, so the
      * queue is empty and anything in it afterward is the disconnect's own
      * doing.  The frame is delivered below to finish the handshake. */
-    uint8_t init[2048];
-    size_t initlen;
 
     netchan_connect(client, &saddr);
     initlen = netchan_send_next(client, init, sizeof(init), &to);
@@ -764,14 +785,19 @@ test_disconnect_outside_connected(void)
 static void
 test_stats(void)
 {
-    TEST(stats);
-
     struct netchan_conn *client = netchan_open(0);
     struct netchan_conn *server = netchan_open(1);
 
     struct nc_addr caddr = make_addr(0x7f000001, 10010);
     struct nc_addr saddr = make_addr(0x7f000001, 20010);
 
+    struct netchan_event ev;
+    struct netchan_conn_stats cs;
+    struct netchan_chan *sch, *ch;
+    char buf[256];
+    struct netchan_chan_stats send_stats;
+    struct netchan_chan_stats recv_stats;
+    TEST(stats);
     netchan_connect(client, &saddr);
     pump(client, server, &caddr);
     netchan_accept(server);
@@ -779,19 +805,17 @@ test_stats(void)
               &caddr,
               &saddr);
 
-    struct netchan_event ev;
     while (netchan_poll(client, &ev)) {}
     while (netchan_poll(server, &ev)) {}
 
     /* conn stats should have non-zero packet counts from handshake */
-    struct netchan_conn_stats cs;
     netchan_conn_stats(client, &cs);
     CHECK(cs.pkts_sent > 0, "client pkts_sent should be > 0 after handshake");
     CHECK(cs.pkts_recv > 0, "client pkts_recv should be > 0 after handshake");
 
     /* open a reliable channel and send 3 messages */
-    struct netchan_chan *ch = netchan_chan_open(client, NETCHAN_RELIABLE,
-                                               NETCHAN_DIR_SEND, "stats-test");
+    ch = netchan_chan_open(client, NETCHAN_RELIABLE,
+                           NETCHAN_DIR_SEND, "stats-test");
     CHECK(ch != NULL, "chan_open failed");
     pump_both(client, server,
               &caddr,
@@ -801,8 +825,10 @@ test_stats(void)
 
     for (int i = 0; i < 3; i++) {
         char msg[32];
+        int wr;
+
         snprintf(msg, sizeof(msg), "msg-%d", i);
-        int wr = netchan_chan_write(ch, msg, strlen(msg));
+        wr = netchan_chan_write(ch, msg, strlen(msg));
         CHECK(wr > 0, "write failed");
         pump_both(client, server,
                   &caddr,
@@ -810,24 +836,21 @@ test_stats(void)
     }
 
     /* drain server events and read data */
-    struct netchan_chan *sch = NULL;
+    sch = NULL;
     while (netchan_poll(server, &ev)) {
         if (ev.type == NETCHAN_EV_DATA && ev.ch)
             sch = ev.ch;
     }
     CHECK(sch != NULL, "no data on server");
 
-    char buf[256];
     while (netchan_chan_read(sch, buf, sizeof(buf)) > 0) {}
 
     /* check channel stats */
-    struct netchan_chan_stats send_stats;
     netchan_chan_stats(ch, &send_stats);
     CHECK(send_stats.msgs_sent == 3, "expected 3 msgs_sent");
     CHECK(send_stats.msgs_acked == 3, "expected 3 msgs_acked");
     CHECK(send_stats.retransmissions == 0, "unexpected retransmissions");
 
-    struct netchan_chan_stats recv_stats;
     netchan_chan_stats(sch, &recv_stats);
     CHECK(recv_stats.msgs_recv == 3, "expected 3 msgs_recv");
 
@@ -845,14 +868,19 @@ test_stats(void)
 static void
 test_accessors(void)
 {
-    TEST(accessors);
-
     struct netchan_conn *client = netchan_open(0);
     struct netchan_conn *server = netchan_open(1);
+
+    struct nc_addr caddr;
+    struct nc_addr saddr;
+    struct netchan_event ev;
+    struct netchan_chan *s_ctrl = NULL, *s_evts = NULL, *s_anon = NULL;
+
+    TEST(accessors);
     CHECK(client && server, "alloc failed");
 
-    struct nc_addr caddr = make_addr(0x7f000001, 10011);
-    struct nc_addr saddr = make_addr(0x7f000001, 20011);
+    caddr = make_addr(0x7f000001, 10011);
+    saddr = make_addr(0x7f000001, 20011);
 
     CHECK(netchan_state(client) == NETCHAN_STATE_NEW, "fresh conn is not NEW");
 
@@ -867,7 +895,6 @@ test_accessors(void)
     CHECK(netchan_id(server) != 0, "server connection id is zero");
     CHECK(netchan_id(client) != netchan_id(server), "both ends share an id");
 
-    struct netchan_event ev;
     while (netchan_poll(client, &ev)) {}
     while (netchan_poll(server, &ev)) {}
 
@@ -899,11 +926,12 @@ test_accessors(void)
 
     /* The receiving side never called chan_open, so everything it knows
      * about these channels arrived on the wire. */
-    struct netchan_chan *s_ctrl = NULL, *s_evts = NULL, *s_anon = NULL;
     while (netchan_poll(server, &ev)) {
+        const char *ct;
+
         if (ev.type != NETCHAN_EV_CHAN_OPEN || !ev.ch)
             continue;
-        const char *ct = netchan_chan_content_type(ev.ch);
+        ct = netchan_chan_content_type(ev.ch);
         CHECK(ct != NULL, "peer-side content type is NULL");
         if (strcmp(ct, "control") == 0) s_ctrl = ev.ch;
         else if (strcmp(ct, "events") == 0) s_evts = ev.ch;
@@ -933,14 +961,21 @@ test_accessors(void)
 static void
 test_content_type_truncation(void)
 {
-    TEST(content_type_truncation);
-
     struct netchan_conn *client = netchan_open(0);
     struct netchan_conn *server = netchan_open(1);
+
+    struct nc_addr caddr;
+    struct nc_addr saddr;
+    struct netchan_event ev;
+    char longct[128];
+    const char *local;
+    struct netchan_chan *sch, *ch;
+    const char *remote;
+    TEST(content_type_truncation);
     CHECK(client && server, "alloc failed");
 
-    struct nc_addr caddr = make_addr(0x7f000001, 10012);
-    struct nc_addr saddr = make_addr(0x7f000001, 20012);
+    caddr = make_addr(0x7f000001, 10012);
+    saddr = make_addr(0x7f000001, 20012);
 
     netchan_connect(client, &saddr);
     pump(client, server, &caddr);
@@ -948,29 +983,27 @@ test_content_type_truncation(void)
     pump(server, client, &saddr);
     CHECK(netchan_state(client) == NETCHAN_STATE_CONNECTED, "not connected");
 
-    struct netchan_event ev;
     while (netchan_poll(client, &ev)) {}
     while (netchan_poll(server, &ev)) {}
 
-    char longct[128];
     memset(longct, 'x', sizeof(longct));
     longct[sizeof(longct) - 1] = '\0';
 
-    struct netchan_chan *ch = netchan_chan_open(client, NETCHAN_RELIABLE,
-                                                NETCHAN_DIR_SEND, longct);
+    ch = netchan_chan_open(client, NETCHAN_RELIABLE,
+                           NETCHAN_DIR_SEND, longct);
     CHECK(ch != NULL, "chan_open failed");
 
-    const char *local = netchan_chan_content_type(ch);
+    local = netchan_chan_content_type(ch);
     CHECK(strlen(local) == 63, "opener did not cap the content type at 63");
 
     pump_both(client, server, &caddr, &saddr);
 
-    struct netchan_chan *sch = NULL;
+    sch = NULL;
     while (netchan_poll(server, &ev))
         if (ev.type == NETCHAN_EV_CHAN_OPEN && ev.ch) sch = ev.ch;
     CHECK(sch != NULL, "no chan_open event on the peer");
 
-    const char *remote = netchan_chan_content_type(sch);
+    remote = netchan_chan_content_type(sch);
     CHECK(strlen(remote) == 63, "peer did not cap the content type at 63");
     CHECK(strcmp(local, remote) == 0, "the two ends cut the name differently");
 

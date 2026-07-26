@@ -47,11 +47,14 @@ cpump(struct netchan_conn *from, struct nc_crypto *fc,
     struct nc_addr dst = {0};
     int count = 0;
     for (;;) {
-        size_t n = netchan_send_next(from, buf, sizeof(buf), &dst);
+        long sn, pn;
+        size_t n;
+
+        n = netchan_send_next(from, buf, sizeof(buf), &dst);
         if (n == 0) break;
-        long sn = nc_crypto_seal(fc, buf, n, sealed, sizeof(sealed));
+        sn = nc_crypto_seal(fc, buf, n, sealed, sizeof(sealed));
         if (sn < 0) break;
-        long pn = nc_crypto_open(tc, sealed, (size_t)sn, plain, sizeof(plain));
+        pn = nc_crypto_open(tc, sealed, (size_t)sn, plain, sizeof(plain));
         if (pn > 0)
             netchan_feed(to, plain, (size_t)pn, from_addr);
         count++;
@@ -74,23 +77,33 @@ cboth(struct netchan_conn *cl, struct nc_crypto *cc,
 static void
 test_encrypted_session(void)
 {
-    TEST("encrypted reliable session");
-
+    struct netchan_conn *cl;
+    struct netchan_conn *sv;
+    struct nc_addr caddr;
+    struct nc_addr saddr;
+    struct netchan_event ev;
+    const char *msg;
+    int wr;
+    struct netchan_chan *sch;
+    char rbuf[256];
+    int rd;
     uint8_t cseed[32], sseed[32];
+
+    struct nc_crypto cc, sc;
+    TEST("encrypted reliable session");
     memset(cseed, 0x11, 32);
     memset(sseed, 0x22, 32);
 
-    struct nc_crypto cc, sc;
     nc_crypto_init(&cc, 0, &(struct nc_crypto_cfg){ .eph_sk_seed = cseed });
     nc_crypto_init(&sc, 1, &(struct nc_crypto_cfg){ .eph_sk_seed = sseed });
     CHECK(do_handshake(&cc, &sc), "handshake did not complete");
     CHECK(memcmp(cc.tx_key, sc.rx_key, 32) == 0, "key mismatch c->s");
     CHECK(memcmp(sc.tx_key, cc.rx_key, 32) == 0, "key mismatch s->c");
 
-    struct netchan_conn *cl = netchan_open(0);
-    struct netchan_conn *sv = netchan_open(1);
-    struct nc_addr caddr = make_addr(1, 10000);
-    struct nc_addr saddr = make_addr(2, 20000);
+    cl = netchan_open(0);
+    sv = netchan_open(1);
+    caddr = make_addr(1, 10000);
+    saddr = make_addr(2, 20000);
 
     netchan_connect(cl, &saddr);
     cpump(cl, &cc, sv, &sc, &caddr);
@@ -98,7 +111,6 @@ test_encrypted_session(void)
     cboth(cl, &cc, sv, &sc, &caddr, &saddr);
     CHECK(netchan_state(cl) == NETCHAN_STATE_CONNECTED, "client not connected");
 
-    struct netchan_event ev;
     while (netchan_poll(cl, &ev)) {}
     while (netchan_poll(sv, &ev)) {}
 
@@ -109,18 +121,17 @@ test_encrypted_session(void)
     while (netchan_poll(cl, &ev)) {}
     while (netchan_poll(sv, &ev)) {}
 
-    const char *msg = "the quick brown fox, delivered under encryption";
-    int wr = netchan_chan_write(ch, msg, strlen(msg));
+    msg = "the quick brown fox, delivered under encryption";
+    wr = netchan_chan_write(ch, msg, strlen(msg));
     CHECK(wr == (int)strlen(msg), "write failed");
     cboth(cl, &cc, sv, &sc, &caddr, &saddr);
 
-    struct netchan_chan *sch = NULL;
+    sch = NULL;
     while (netchan_poll(sv, &ev))
         if (ev.type == NETCHAN_EV_DATA && ev.ch) sch = ev.ch;
     CHECK(sch != NULL, "no data event on server");
 
-    char rbuf[256];
-    int rd = netchan_chan_read(sch, rbuf, sizeof(rbuf));
+    rd = netchan_chan_read(sch, rbuf, sizeof(rbuf));
     CHECK(rd == (int)strlen(msg), "wrong read size");
     CHECK(memcmp(rbuf, msg, rd) == 0, "plaintext mismatch through cipher");
 
@@ -132,18 +143,19 @@ test_encrypted_session(void)
 static void
 test_tamper_rejected(void)
 {
-    TEST("tampered packet rejected");
-
+    long sn;
     uint8_t s0[32], s1[32];
-    memset(s0, 0xa1, 32); memset(s1, 0xb2, 32);
+
     struct nc_crypto a, b;
+    const uint8_t plain[] = "position update";
+    uint8_t sealed[128], out[128];
+    TEST("tampered packet rejected");
+    memset(s0, 0xa1, 32); memset(s1, 0xb2, 32);
     nc_crypto_init(&a, 0, &(struct nc_crypto_cfg){ .eph_sk_seed = s0 });
     nc_crypto_init(&b, 1, &(struct nc_crypto_cfg){ .eph_sk_seed = s1 });
     CHECK(do_handshake(&a, &b), "handshake failed");
 
-    const uint8_t plain[] = "position update";
-    uint8_t sealed[128], out[128];
-    long sn = nc_crypto_seal(&a, plain, sizeof(plain), sealed, sizeof(sealed));
+    sn = nc_crypto_seal(&a, plain, sizeof(plain), sealed, sizeof(sealed));
     CHECK(sn > 0, "seal failed");
 
     sealed[NC_CRYPTO_OVERHEAD] ^= 0x01;   /* flip a ciphertext byte */
@@ -159,18 +171,19 @@ test_tamper_rejected(void)
 static void
 test_replay_rejected(void)
 {
-    TEST("replayed packet rejected");
-
+    long sn;
     uint8_t s0[32], s1[32];
-    memset(s0, 0xc3, 32); memset(s1, 0xd4, 32);
+
     struct nc_crypto a, b;
+    const uint8_t plain[] = "fire button pressed";
+    uint8_t sealed[128], out[128];
+    TEST("replayed packet rejected");
+    memset(s0, 0xc3, 32); memset(s1, 0xd4, 32);
     nc_crypto_init(&a, 0, &(struct nc_crypto_cfg){ .eph_sk_seed = s0 });
     nc_crypto_init(&b, 1, &(struct nc_crypto_cfg){ .eph_sk_seed = s1 });
     CHECK(do_handshake(&a, &b), "handshake failed");
 
-    const uint8_t plain[] = "fire button pressed";
-    uint8_t sealed[128], out[128];
-    long sn = nc_crypto_seal(&a, plain, sizeof(plain), sealed, sizeof(sealed));
+    sn = nc_crypto_seal(&a, plain, sizeof(plain), sealed, sizeof(sealed));
     CHECK(sn > 0, "seal failed");
 
     CHECK(nc_crypto_open(&b, sealed, (size_t)sn, out, sizeof(out)) > 0,
@@ -183,23 +196,24 @@ test_replay_rejected(void)
 static void
 test_no_midsession_rekey(void)
 {
-    TEST("no mid-session re-key from a later HELLO");
-
+    uint8_t saved[32];
+    size_t n;
     uint8_t s0[32], s1[32], s2[32];
-    memset(s0, 0x01, 32); memset(s1, 0x02, 32); memset(s2, 0x03, 32);
+
     struct nc_crypto a, b, other;
+    uint8_t hp[NC_CRYPTO_HELLO_LEN], out[NC_CRYPTO_HELLO_LEN];
+    TEST("no mid-session re-key from a later HELLO");
+    memset(s0, 0x01, 32); memset(s1, 0x02, 32); memset(s2, 0x03, 32);
     nc_crypto_init(&a, 0, &(struct nc_crypto_cfg){ .eph_sk_seed = s0 });
     nc_crypto_init(&b, 1, &(struct nc_crypto_cfg){ .eph_sk_seed = s1 });
     /* a third party's ephemeral */
     nc_crypto_init(&other, 0, &(struct nc_crypto_cfg){ .eph_sk_seed = s2 });
     CHECK(do_handshake(&a, &b), "handshake failed");
 
-    uint8_t saved[32];
     memcpy(saved, b.rx_key, 32);
 
     /* a stray or injected HELLO after keys exist must be ignored, not rekey */
-    uint8_t hp[NC_CRYPTO_HELLO_LEN], out[NC_CRYPTO_HELLO_LEN];
-    size_t n = nc_crypto_handshake_packet(&other, hp, sizeof(hp));
+    n = nc_crypto_handshake_packet(&other, hp, sizeof(hp));
     CHECK(nc_crypto_open(&b, hp, n, out, sizeof(out)) == 0, "late HELLO not consumed");
     CHECK(memcmp(b.rx_key, saved, 32) == 0, "keys changed after a later HELLO");
     PASS();
@@ -220,14 +234,14 @@ expect_key(void *ctx, const uint8_t *peer_static_pk)
 static void
 test_identity_accepted(void)
 {
-    TEST("server identity key accepted by the client");
-
     uint8_t host_sk[32], host_pk[32], s0[32], s1[32];
+
+    struct nc_crypto cl, sv;
+    TEST("server identity key accepted by the client");
     memset(host_sk, 0x5a, 32);
     memset(s0, 0x71, 32); memset(s1, 0x72, 32);
     nc_crypto_identity_public(host_pk, host_sk);
 
-    struct nc_crypto cl, sv;
     nc_crypto_init(&cl, 0, &(struct nc_crypto_cfg){
         .eph_sk_seed = s0,
         .require_peer_static = 1,
@@ -244,15 +258,17 @@ test_identity_accepted(void)
 static void
 test_identity_rejected(void)
 {
-    TEST("wrong server identity key refuses the session");
-
     uint8_t host_sk[32], other_sk[32], expected_pk[32], s0[32], s1[32];
+    uint8_t plain[] = "must never leave";
+    uint8_t sealed[128];
+    struct nc_crypto cl, sv;
+
+    TEST("wrong server identity key refuses the session");
     memset(host_sk, 0x5a, 32);
     memset(other_sk, 0x5b, 32);          /* the key the client expects */
     memset(s0, 0x81, 32); memset(s1, 0x82, 32);
     nc_crypto_identity_public(expected_pk, other_sk);
 
-    struct nc_crypto cl, sv;
     nc_crypto_init(&cl, 0, &(struct nc_crypto_cfg){
         .eph_sk_seed = s0,
         .require_peer_static = 1,
@@ -264,7 +280,6 @@ test_identity_rejected(void)
     CHECK(nc_crypto_failed(&cl), "client accepted a host key it did not know");
     CHECK(!nc_crypto_ready(&cl), "refused session became ready anyway");
 
-    uint8_t plain[] = "must never leave", sealed[128];
     CHECK(nc_crypto_seal(&cl, plain, sizeof(plain), sealed, sizeof(sealed)) < 0,
           "a refused session still sealed a packet");
     PASS();
@@ -273,24 +288,26 @@ test_identity_rejected(void)
 static void
 test_session_id_binds_transcript(void)
 {
-    TEST("session id is unique per session");
-
+    const uint8_t *a;
+    const uint8_t *b;
+    uint8_t first[NC_CRYPTO_SID_LEN];
     uint8_t host_sk[32], s0[32], s1[32], s2[32];
+
+    struct nc_crypto cl, sv, cl2, sv2;
+    TEST("session id is unique per session");
     memset(host_sk, 0x5a, 32);
     memset(s0, 0x91, 32); memset(s1, 0x92, 32); memset(s2, 0x93, 32);
 
-    struct nc_crypto cl, sv, cl2, sv2;
     nc_crypto_init(&cl, 0, &(struct nc_crypto_cfg){ .eph_sk_seed = s0 });
     nc_crypto_init(&sv, 1, &(struct nc_crypto_cfg){
         .eph_sk_seed = s1, .static_sk = host_sk });
     CHECK(do_handshake(&cl, &sv), "first handshake failed");
 
-    const uint8_t *a = nc_crypto_session_id(&cl);
-    const uint8_t *b = nc_crypto_session_id(&sv);
+    a = nc_crypto_session_id(&cl);
+    b = nc_crypto_session_id(&sv);
     CHECK(a && b, "session id unavailable after handshake");
     CHECK(memcmp(a, b, NC_CRYPTO_SID_LEN) == 0, "the two sides disagree on it");
 
-    uint8_t first[NC_CRYPTO_SID_LEN];
     memcpy(first, a, NC_CRYPTO_SID_LEN);
 
     /* same server identity, a different client ephemeral: a different id,
