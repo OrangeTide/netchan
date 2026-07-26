@@ -352,9 +352,11 @@ ev_push_redirect(struct netchan_conn *c, const struct nc_addr *addr,
 static uint8_t *
 ctrl_reserve(struct netchan_conn *c, size_t n)
 {
+    uint8_t *p;
+
     if (c->ctrl_len + n > NC_CTRL_BUF_SIZE)
         return NULL;
-    uint8_t *p = c->ctrl_buf + c->ctrl_len;
+    p = c->ctrl_buf + c->ctrl_len;
     c->ctrl_len += n;
     return p;
 }
@@ -415,8 +417,10 @@ static void
 ctrl_channel_open(struct netchan_conn *c, struct netchan_chan *ch)
 {
     size_t ct_len = strlen(ch->content_type);
+    uint8_t *p;
+
     if (ct_len > 63) ct_len = 63;
-    uint8_t *p = ctrl_reserve(c, 5 + ct_len);
+    p = ctrl_reserve(c, 5 + ct_len);
     if (!p) return;
     p[0] = NC_FRAME_CHANNEL_OPEN;
     p[1] = ch->id;
@@ -476,7 +480,9 @@ static struct netchan_chan *
 chan_new(struct netchan_conn *c, uint8_t id, int type, int dir,
         int role, const char *content_type)
 {
+    struct netchan_chan *ch;
     int slot = -1;
+
     for (int i = 0; i < NC_MAX_CHAN; i++) {
         if (!c->chan_used[i]) {
             slot = i;
@@ -485,7 +491,7 @@ chan_new(struct netchan_conn *c, uint8_t id, int type, int dir,
     }
     if (slot < 0) return NULL; /* channel pool exhausted */
 
-    struct netchan_chan *ch = &c->chan_pool[slot];
+    ch = &c->chan_pool[slot];
     memset(ch, 0, sizeof(*ch));
     chan_reset_bufs(ch);
     c->chan_used[slot] = 1;
@@ -507,8 +513,10 @@ chan_new(struct netchan_conn *c, uint8_t id, int type, int dir,
 static void
 chan_free(struct netchan_chan *ch)
 {
+    struct netchan_conn *c;
+
     if (!ch) return;
-    struct netchan_conn *c = ch->conn;
+    c = ch->conn;
     for (int i = 0; i < NC_OUTGOING_SLOTS; i++) {
         if (ch->outgoing[i].active)
             pool_put(c, ch->outgoing[i].buf);
@@ -529,11 +537,13 @@ static int
 chan_recv_enqueue(struct netchan_chan *ch, const uint8_t *data, size_t len)
 {
     int next = (ch->rq_tail + 1) % NC_RECV_QUEUE;
+    int b;
+
     if (next == ch->rq_head)
         return NETCHAN_ERR;
     if (len > NC_MAX_MSG)
         return NETCHAN_ERR_TOOBIG;
-    int b = pool_get(ch->conn);
+    b = pool_get(ch->conn);
     if (b == NC_NOBUF)
         return NETCHAN_ERR_NOMEM;
     memcpy(pool_ptr(ch->conn, b), data, len);
@@ -613,10 +623,13 @@ frag_free(struct netchan_chan *ch, struct nc_frag_asm *f)
 static int
 process_connect_init(struct netchan_conn *c, const uint8_t *p, size_t len)
 {
+    uint32_t client_id;
+    uint8_t version;
+
     if (len < 6) return NETCHAN_ERR_PROTO;
     if (!c->server) return NETCHAN_ERR_PROTO;
-    uint32_t client_id = rd32(p + 1);
-    uint8_t version = p[5];
+    client_id = rd32(p + 1);
+    version = p[5];
     if (version != NC_VERSION) return NETCHAN_ERR_PROTO;
     c->remote_id = client_id;
     if (c->state == NETCHAN_STATE_NEW) {
@@ -629,12 +642,15 @@ process_connect_init(struct netchan_conn *c, const uint8_t *p, size_t len)
 static int
 process_connect_accept(struct netchan_conn *c, const uint8_t *p, size_t len)
 {
+    uint32_t server_id, idle;
+    uint8_t version;
+
     if (len < 10) return NETCHAN_ERR_PROTO;
     if (c->server) return NETCHAN_ERR_PROTO;
-    uint32_t server_id = rd32(p + 1);
-    uint8_t version = p[5];
+    server_id = rd32(p + 1);
+    version = p[5];
     (void)version;
-    uint32_t idle = rd32(p + 6);
+    idle = rd32(p + 6);
     (void)idle;
     c->remote_id = server_id;
     c->state = NETCHAN_STATE_CONNECTED;
@@ -645,10 +661,13 @@ process_connect_accept(struct netchan_conn *c, const uint8_t *p, size_t len)
 static int
 process_connect_redirect(struct netchan_conn *c, const uint8_t *p, size_t len)
 {
-    if (len < 12) return NETCHAN_ERR_PROTO;
-    uint32_t new_id = rd32(p + 1);
-    uint8_t addr_type = p[5];
+    uint32_t new_id;
+    uint8_t addr_type;
     struct nc_addr a;
+
+    if (len < 12) return NETCHAN_ERR_PROTO;
+    new_id = rd32(p + 1);
+    addr_type = p[5];
     memset(&a, 0, sizeof(a));
 
     /* The wire frame carries [type][ip][port(BE)], which is exactly the
@@ -705,8 +724,10 @@ process_disconnect(struct netchan_conn *c, const uint8_t *p, size_t len)
 static int
 process_ping(struct netchan_conn *c, const uint8_t *p, size_t len)
 {
+    uint32_t opaque;
+
     if (len < 5) return NETCHAN_ERR_PROTO;
-    uint32_t opaque = rd32(p + 1);
+    opaque = rd32(p + 1);
     ctrl_pong(c, opaque);
     return 5;
 }
@@ -714,8 +735,10 @@ process_ping(struct netchan_conn *c, const uint8_t *p, size_t len)
 static int
 process_pong(struct netchan_conn *c, const uint8_t *p, size_t len)
 {
+    uint32_t opaque;
+
     if (len < 5) return NETCHAN_ERR_PROTO;
-    uint32_t opaque = rd32(p + 1);
+    opaque = rd32(p + 1);
     if (opaque == c->ping_opaque && c->ping_sent_ms) {
         uint32_t now = nc_now_ms();
         c->rtt_ms = now - c->ping_sent_ms;
@@ -729,11 +752,16 @@ process_pong(struct netchan_conn *c, const uint8_t *p, size_t len)
 static int
 process_channel_open(struct netchan_conn *c, const uint8_t *p, size_t len)
 {
+    struct netchan_chan *ch;
+    uint8_t chan_id, ct_len;
+    int type, dir, local_role;
+    char ct[64] = {0};
+
     if (len < 5) return NETCHAN_ERR_PROTO;
-    uint8_t chan_id = p[1];
-    int type = p[2];
-    int dir = p[3];
-    uint8_t ct_len = p[4];
+    chan_id = p[1];
+    type = p[2];
+    dir = p[3];
+    ct_len = p[4];
     if (len < (size_t)(5 + ct_len)) return NETCHAN_ERR_PROTO;
 
     if (c->channels[chan_id]) {
@@ -742,14 +770,14 @@ process_channel_open(struct netchan_conn *c, const uint8_t *p, size_t len)
     }
 
     /* remote's direction is flipped for us */
-    int local_role = (dir == NETCHAN_DIR_SEND) ? 1 : 0; /* they send, we recv */
-    char ct[64] = {0};
+    local_role = (dir == NETCHAN_DIR_SEND) ? 1 : 0; /* they send, we recv */
     if (ct_len > 0) {
         size_t n = ct_len < 63 ? ct_len : 63;
+
         memcpy(ct, p + 5, n);
     }
 
-    struct netchan_chan *ch = chan_new(c, chan_id, type, dir, local_role, ct);
+    ch = chan_new(c, chan_id, type, dir, local_role, ct);
     if (!ch) {
         ctrl_channel_close(c, chan_id, 1);
         return 5 + ct_len;
@@ -768,9 +796,12 @@ process_channel_open(struct netchan_conn *c, const uint8_t *p, size_t len)
 static int
 process_channel_close(struct netchan_conn *c, const uint8_t *p, size_t len)
 {
+    struct netchan_chan *ch;
+    uint8_t chan_id;
+
     if (len < 4) return NETCHAN_ERR_PROTO;
-    uint8_t chan_id = p[1];
-    struct netchan_chan *ch = c->channels[chan_id];
+    chan_id = p[1];
+    ch = c->channels[chan_id];
     if (ch) {
         ch->state = 3; /* closed */
         ev_push(c, NETCHAN_EV_CHAN_CLOSE, ch);
@@ -781,16 +812,21 @@ process_channel_close(struct netchan_conn *c, const uint8_t *p, size_t len)
 static int
 process_data(struct netchan_conn *c, const uint8_t *p, size_t len)
 {
-    if (len < 8) return NETCHAN_ERR_PROTO;
-    uint8_t chan_id = p[1];
-    uint16_t seq = rd16(p + 2);
-    uint16_t data_len = rd16(p + 4);
-    uint8_t frag_idx = p[6];
-    uint8_t frag_total = p[7];
-    if (len < (size_t)(8 + data_len)) return NETCHAN_ERR_PROTO;
-    const uint8_t *payload = p + 8;
+    struct netchan_chan *ch;
+    const uint8_t *payload;
+    uint16_t seq, data_len;
+    uint8_t chan_id, frag_idx, frag_total;
 
-    struct netchan_chan *ch = c->channels[chan_id];
+    if (len < 8) return NETCHAN_ERR_PROTO;
+    chan_id = p[1];
+    seq = rd16(p + 2);
+    data_len = rd16(p + 4);
+    frag_idx = p[6];
+    frag_total = p[7];
+    if (len < (size_t)(8 + data_len)) return NETCHAN_ERR_PROTO;
+    payload = p + 8;
+
+    ch = c->channels[chan_id];
     if (!ch || ch->role != 1) return 8 + data_len;
 
     if (ch->type == NETCHAN_UNRELIABLE) {
@@ -909,17 +945,23 @@ process_data(struct netchan_conn *c, const uint8_t *p, size_t len)
 static int
 process_ack(struct netchan_conn *c, const uint8_t *p, size_t len)
 {
-    if (len < 4) return NETCHAN_ERR_PROTO;
-    uint8_t chan_id = p[1];
-    uint16_t acked_seq = rd16(p + 2);
+    struct netchan_chan *ch;
+    uint16_t acked_seq;
+    uint8_t chan_id;
 
-    struct netchan_chan *ch = c->channels[chan_id];
+    if (len < 4) return NETCHAN_ERR_PROTO;
+    chan_id = p[1];
+    acked_seq = rd16(p + 2);
+
+    ch = c->channels[chan_id];
     if (!ch || ch->role != 0) return 4;
 
     for (int i = 0; i < NC_OUTGOING_SLOTS; i++) {
         struct nc_outgoing *o = &ch->outgoing[i];
+        int16_t diff;
+
         if (!o->active) continue;
-        int16_t diff = (int16_t)(o->seq - acked_seq);
+        diff = (int16_t)(o->seq - acked_seq);
         if (diff <= 0) {
             ch->bytes_in_flight -= o->len;
             ch->msgs_acked++;
@@ -940,11 +982,15 @@ process_ack(struct netchan_conn *c, const uint8_t *p, size_t len)
 static int
 process_window_update(struct netchan_conn *c, const uint8_t *p, size_t len)
 {
-    if (len < 6) return NETCHAN_ERR_PROTO;
-    uint8_t chan_id = p[1];
-    uint32_t window = rd32(p + 2);
+    struct netchan_chan *ch;
+    uint32_t window;
+    uint8_t chan_id;
 
-    struct netchan_chan *ch = c->channels[chan_id];
+    if (len < 6) return NETCHAN_ERR_PROTO;
+    chan_id = p[1];
+    window = rd32(p + 2);
+
+    ch = c->channels[chan_id];
     if (!ch) return 6;
 
     if (ch->role == 0) {
@@ -963,12 +1009,14 @@ static int
 parse_frames(struct netchan_conn *c, const uint8_t *data, size_t len)
 {
     size_t pos = 0;
+
     while (pos < len) {
+        int consumed;
+
         if (data[pos] == NC_FRAME_PADDING) {
             pos++;
             continue;
         }
-        int consumed;
         switch (data[pos]) {
         case NC_FRAME_CONNECT_INIT:
             consumed = process_connect_init(c, data + pos, len - pos);
@@ -1168,12 +1216,15 @@ netchan_feed(struct netchan_conn *c, const void *pkt, size_t len,
              const struct nc_addr *from)
 {
     const uint8_t *p = pkt;
+    uint32_t conn_id;
+    size_t hdr_size;
+    uint8_t flags;
+
     if (len < NC_HDR_INIT_SIZE) return NETCHAN_ERR_PROTO;
 
-    uint8_t flags = p[0];
-    uint32_t conn_id = rd32(p + 1);
+    flags = p[0];
+    conn_id = rd32(p + 1);
 
-    size_t hdr_size;
     if (flags & NC_PKT_FLAG_INIT) {
         hdr_size = NC_HDR_INIT_SIZE;
     } else {
@@ -1230,8 +1281,13 @@ size_t
 netchan_send_next(struct netchan_conn *c, void *buf, size_t buflen,
                   struct nc_addr *to)
 {
+    uint8_t *p = buf;
+    size_t hdr_size, pos, mtu;
+    uint8_t pkt_flags = 0;
+    int is_init;
     /* nothing to send? check ctrl queue and channel data */
     int has_data = 0;
+
     if (c->ctrl_len > 0)
         has_data = 1;
     if (!has_data) {
@@ -1254,14 +1310,12 @@ netchan_send_next(struct netchan_conn *c, void *buf, size_t buflen,
     if (!has_data)
         return 0;
 
-    uint8_t *p = buf;
-    int is_init = (c->state == NETCHAN_STATE_CONNECTING && !c->server);
-    size_t hdr_size = is_init ? NC_HDR_INIT_SIZE : NC_HDR_FULL_SIZE;
+    is_init = (c->state == NETCHAN_STATE_CONNECTING && !c->server);
+    hdr_size = is_init ? NC_HDR_INIT_SIZE : NC_HDR_FULL_SIZE;
     if (buflen < hdr_size)
         return 0;
 
     /* write packet header */
-    uint8_t pkt_flags = 0;
     if (is_init) {
         pkt_flags |= NC_PKT_FLAG_INIT;
         p[0] = pkt_flags;
@@ -1273,8 +1327,8 @@ netchan_send_next(struct netchan_conn *c, void *buf, size_t buflen,
         wr16(p + 5, c->next_pkt_num++);
     }
 
-    size_t pos = hdr_size;
-    size_t mtu = c->cfg.mtu;
+    pos = hdr_size;
+    mtu = c->cfg.mtu;
     if (mtu > buflen) mtu = buflen;
 
     /* flush control frames */
@@ -1316,18 +1370,22 @@ netchan_send_next(struct netchan_conn *c, void *buf, size_t buflen,
     /* send DATA from channels */
     for (int i = 0; i < NC_MAX_CHANNELS && pos + 9 <= mtu; i++) {
         struct netchan_chan *ch = c->channels[i];
+        struct nc_outgoing *o;
+        size_t frag_payload, avail, offset, dlen;
+        uint8_t fi;
+
         if (!ch || ch->role != 0 || ch->state != 1) continue;
 
-        struct nc_outgoing *o = chan_next_sendable(ch);
+        o = chan_next_sendable(ch);
         if (!o) continue;
 
-        size_t frag_payload = max_frag_payload(c);
-        size_t avail = mtu - pos - 8;
+        frag_payload = max_frag_payload(c);
+        avail = mtu - pos - 8;
         if (avail == 0) break;
 
-        uint8_t fi = o->frag_sent;
-        size_t offset = (size_t)fi * frag_payload;
-        size_t dlen = o->len - offset;
+        fi = o->frag_sent;
+        offset = (size_t)fi * frag_payload;
+        dlen = o->len - offset;
         if (dlen > frag_payload) dlen = frag_payload;
         if (dlen > avail) break; /* can't fit this fragment */
 
@@ -1377,6 +1435,8 @@ netchan_service(struct netchan_conn *c, uint32_t now_ms)
     /* connection handshake retry */
     if (c->state == NETCHAN_STATE_CONNECTING && !c->server) {
         uint32_t elapsed = now_ms - c->connect_sent_ms;
+        int remain;
+
         if (elapsed >= NC_CONNECT_RETRY_MS) {
             if (c->connect_attempts >= NC_CONNECT_RETRIES) {
                 c->state = NETCHAN_STATE_CLOSED;
@@ -1387,7 +1447,7 @@ netchan_service(struct netchan_conn *c, uint32_t now_ms)
             c->connect_sent_ms = now_ms;
             c->connect_attempts++;
         }
-        int remain = NC_CONNECT_RETRY_MS - elapsed;
+        remain = NC_CONNECT_RETRY_MS - elapsed;
         if (remain < 0) remain = 0;
         if (next_ms < 0 || remain < next_ms) next_ms = remain;
     }
@@ -1395,12 +1455,14 @@ netchan_service(struct netchan_conn *c, uint32_t now_ms)
     /* idle timeout */
     if (c->state == NETCHAN_STATE_CONNECTED && c->last_recv_ms > 0) {
         uint32_t idle = now_ms - c->last_recv_ms;
+        int remain;
+
         if (idle >= c->cfg.idle_timeout_ms) {
             c->state = NETCHAN_STATE_CLOSED;
             ev_push(c, NETCHAN_EV_DISCONNECTED, NULL);
             return NETCHAN_ERR;
         }
-        int remain = c->cfg.idle_timeout_ms - idle;
+        remain = c->cfg.idle_timeout_ms - idle;
         if (next_ms < 0 || remain < next_ms) next_ms = remain;
     }
 
@@ -1425,11 +1487,13 @@ netchan_service(struct netchan_conn *c, uint32_t now_ms)
 
         for (int j = 0; j < NC_OUTGOING_SLOTS; j++) {
             struct nc_outgoing *o = &ch->outgoing[j];
+            uint32_t timeout, elapsed;
+
             if (!o->active || o->sent_ms == 0) continue;
 
-            uint32_t timeout = c->cfg.retransmit_ms << (o->attempts - 1);
+            timeout = c->cfg.retransmit_ms << (o->attempts - 1);
             if (timeout > NC_MAX_RT_MS) timeout = NC_MAX_RT_MS;
-            uint32_t elapsed = now_ms - o->sent_ms;
+            elapsed = now_ms - o->sent_ms;
 
             if (elapsed >= timeout) {
                 if (o->attempts >= NC_MAX_RT_ATTEMPTS) {
@@ -1461,15 +1525,18 @@ struct netchan_chan *
 netchan_chan_open(struct netchan_conn *c, int type, int dir,
                  const char *content_type)
 {
+    struct netchan_chan *ch;
+    int local_role;
+    uint8_t id;
+
     if (c->state != NETCHAN_STATE_CONNECTED) return NULL;
 
-    uint8_t id = c->next_chan_id;
+    id = c->next_chan_id;
     if (c->channels[id]) return NULL;
     c->next_chan_id += 2;
 
-    int local_role = (dir == NETCHAN_DIR_SEND) ? 0 : 1;
-    struct netchan_chan *ch = chan_new(c, id, type, dir, local_role,
-                                     content_type);
+    local_role = (dir == NETCHAN_DIR_SEND) ? 0 : 1;
+    ch = chan_new(c, id, type, dir, local_role, content_type);
     if (!ch) return NULL;
 
     ctrl_channel_open(c, ch);
@@ -1518,6 +1585,10 @@ netchan_chan_state(struct netchan_chan *ch)
 int
 netchan_chan_write(struct netchan_chan *ch, const void *data, size_t len)
 {
+    struct nc_outgoing *o;
+    size_t frag_payload;
+    int next, b;
+
     if (!ch || ch->role != 0) return NETCHAN_ERR;
     if (ch->state == 3) return NETCHAN_ERR_CLOSED;
     if (len == 0) return 0;
@@ -1530,12 +1601,12 @@ netchan_chan_write(struct netchan_chan *ch, const void *data, size_t len)
     }
 
     /* check send queue capacity */
-    int next = (ch->out_tail + 1) % NC_OUTGOING_SLOTS;
+    next = (ch->out_tail + 1) % NC_OUTGOING_SLOTS;
     if (next == ch->out_head)
         return NETCHAN_ERR_AGAIN;
 
-    struct nc_outgoing *o = &ch->outgoing[ch->out_tail];
-    int b = pool_get(ch->conn);
+    o = &ch->outgoing[ch->out_tail];
+    b = pool_get(ch->conn);
     if (b == NC_NOBUF) return NETCHAN_ERR_NOMEM;
     memset(o, 0, sizeof(*o));
     o->buf = b;
@@ -1544,7 +1615,7 @@ netchan_chan_write(struct netchan_chan *ch, const void *data, size_t len)
     o->seq = ch->send_seq++;
     o->active = 1;
 
-    size_t frag_payload = max_frag_payload(ch->conn);
+    frag_payload = max_frag_payload(ch->conn);
     o->frag_total = (uint8_t)((len + frag_payload - 1) / frag_payload);
     if (o->frag_total == 0) o->frag_total = 1;
     if (o->frag_total > NC_MAX_FRAGS) {
@@ -1565,11 +1636,14 @@ netchan_chan_write(struct netchan_chan *ch, const void *data, size_t len)
 int
 netchan_chan_read(struct netchan_chan *ch, void *buf, size_t buflen)
 {
+    struct nc_recv_entry *e;
+    size_t n;
+
     if (!ch || ch->role != 1) return NETCHAN_ERR;
     if (ch->rq_head == ch->rq_tail) return 0;
 
-    struct nc_recv_entry *e = &ch->recv_queue[ch->rq_head];
-    size_t n = e->len < buflen ? e->len : buflen;
+    e = &ch->recv_queue[ch->rq_head];
+    n = e->len < buflen ? e->len : buflen;
     memcpy(buf, pool_ptr(ch->conn, e->buf), n);
     pool_put(ch->conn, e->buf);
     e->buf = NC_NOBUF;

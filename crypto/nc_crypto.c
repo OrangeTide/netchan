@@ -286,6 +286,9 @@ long
 nc_crypto_seal(struct nc_crypto *c, const uint8_t *plain, size_t len,
                uint8_t *out, size_t cap)
 {
+    uint64_t counter;
+    uint8_t nonce[24];
+
     if (!c->have_key)
         return NC_CRYPTO_ERR;
     if (cap < len + NC_CRYPTO_OVERHEAD)
@@ -293,8 +296,7 @@ nc_crypto_seal(struct nc_crypto *c, const uint8_t *plain, size_t len,
     if (c->tx_counter == UINT64_MAX)
         return NC_CRYPTO_ERR;   /* refuse to wrap the nonce */
 
-    uint64_t counter = ++c->tx_counter;   /* 1-based, never reused */
-    uint8_t nonce[24];
+    counter = ++c->tx_counter;   /* 1-based, never reused */
     memset(nonce, 0, sizeof(nonce));
     wr64be(nonce, counter);
 
@@ -310,19 +312,22 @@ nc_crypto_seal(struct nc_crypto *c, const uint8_t *plain, size_t len,
 static int
 replay_check_and_update(struct nc_crypto *c, uint64_t counter)
 {
+    uint64_t diff, bit;
+
     if (counter == 0)
         return NC_CRYPTO_ERR;   /* counters are 1-based */
     if (counter > c->rx_max) {
         uint64_t shift = counter - c->rx_max;
+
         c->rx_window = (shift >= 64) ? 0 : (c->rx_window << shift);
         c->rx_window |= 1;                 /* bit 0 = rx_max (== counter now) */
         c->rx_max = counter;
         return NC_CRYPTO_OK;
     }
-    uint64_t diff = c->rx_max - counter;
+    diff = c->rx_max - counter;
     if (diff >= 64)
         return NC_CRYPTO_ERR;   /* too old */
-    uint64_t bit = (uint64_t)1 << diff;
+    bit = (uint64_t)1 << diff;
     if (c->rx_window & bit)
         return NC_CRYPTO_ERR;   /* already seen: replay */
     c->rx_window |= bit;
@@ -374,14 +379,17 @@ nc_crypto_open(struct nc_crypto *c, const uint8_t *pkt, size_t len,
     }
 
     if (pkt[0] == NC_CRYPTO_DATA) {
+        size_t ct_len;
+        uint64_t counter;
+        uint8_t nonce[24];
+
         if (!c->have_key || len < NC_CRYPTO_OVERHEAD)
             return NC_CRYPTO_ERR;
-        size_t ct_len = len - NC_CRYPTO_OVERHEAD;
+        ct_len = len - NC_CRYPTO_OVERHEAD;
         if (ct_len > cap)
             return NC_CRYPTO_ERR;
 
-        uint64_t counter = rd64be(pkt + 1);
-        uint8_t nonce[24];
+        counter = rd64be(pkt + 1);
         memset(nonce, 0, sizeof(nonce));
         wr64be(nonce, counter);
 
