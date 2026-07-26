@@ -2,14 +2,14 @@
 
 /*
  * The core is buffer-in, buffer-out, so these tests do not need a socket
- * and are better off without one: mc_memlink delivers synchronously and
+ * and are better off without one: memlink delivers synchronously and
  * impairs traffic on a fixed count, which makes every check here
  * deterministic and lets the window be tested against reordering and
  * duplication. mc_udp has its own test.
  */
 
 #include "microchan.h"
-#include "mc_memlink.h"
+#include "memlink.h"
 #include <stdio.h>
 #include <string.h>
 

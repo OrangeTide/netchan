@@ -1,7 +1,7 @@
 /* test_mc_udp.c : the host UDP transport over real loopback sockets */
 
 /*
- * The protocol tests run on mc_memlink, so this is the only thing that
+ * The protocol tests run on memlink, so this is the only thing that
  * exercises mc_udp: the ephemeral bind, the address packing, the return
  * convention of a non-blocking recv, and that a datagram arrives intact
  * with the sender's address on it.

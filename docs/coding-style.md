@@ -82,6 +82,11 @@ when it is vendored into a tree that has one of its own.
 A filename that already begins with the prefix does not repeat it, so
 `bd_draw.h` guards with `BD_DRAW_H`.
 
+Neither does a header named for the library itself. A library called widgetkit
+exporting `wk_*` guards `widgetkit.h` with `WIDGETKIT_H`, not with
+`WK_WIDGETKIT_H`. The name is already the library's own, so the only thing it
+can collide with is another copy of the same library.
+
 Do not use `#pragma once`. It is in no C standard, and what counts as the same
 file is left to the implementation, so symlinks, hard links, and a header
 reached through two include paths are handled differently by different
@@ -285,6 +290,19 @@ A constant that describes an external format rather than the API may keep that
 format's prefix even inside a module named something else, so a reader can tell
 a wire constant from a tunable. This is a preference, not a rule. Consistency
 within a module matters more than the distinction.
+
+A project of several layers may run two levels of prefix: a short one for the
+project and a longer one for the module that carries its name. The rule still
+holds, because each module owns exactly one prefix.
+
+    netchan_open()      the core's API
+    nc_addr             the shared type every layer passes around
+    nc_udp_open()       the socket layer
+    nc_crypto_seal()    the encryption layer
+
+What the rule does forbid is one header exporting two prefixes. Where that
+happens on purpose, because two halves of one thing genuinely share a wire
+format or a file, say so in the header rather than leaving a reader to guess.
 
 ### Abbreviations
 

@@ -1,6 +1,6 @@
-/* mc_memlink.c : an in-memory datagram link for microchan tests */
+/* memlink.c : an in-memory datagram link for microchan tests */
 
-#include "mc_memlink.h"
+#include "memlink.h"
 #include <string.h>
 
 /*

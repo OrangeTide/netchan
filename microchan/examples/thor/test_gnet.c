@@ -2,14 +2,14 @@
 
 /*
  * game_net owns no socket by design: the application pulls datagrams out
- * and feeds them back in. So this drives it over mc_memlink, where delivery
+ * and feeds them back in. So this drives it over memlink, where delivery
  * is a synchronous function call. The whole check is then deterministic,
  * which matters most for the final state comparison. mc_udp is tested on
  * its own in ../../tests/test_mc_udp.c.
  */
 
 #include "game_net.h"
-#include "mc_memlink.h"
+#include "memlink.h"
 #include <stdio.h>
 #include <string.h>
 

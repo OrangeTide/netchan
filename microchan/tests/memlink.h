@@ -1,4 +1,4 @@
-/* mc_memlink.h : an in-memory datagram link for microchan tests */
+/* memlink.h : an in-memory datagram link for microchan tests */
 
 /*
  * The microchan core and the game net layer are both buffer-in, buffer-out:
@@ -13,8 +13,8 @@
  * exercised. mc_udp still has its own test for the socket work.
  */
 
-#ifndef MC_MEMLINK_H
-#define MC_MEMLINK_H
+#ifndef MEML_MEMLINK_H
+#define MEML_MEMLINK_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -76,4 +76,4 @@ int meml_send(struct memlink *l, const struct mc_addr *from,
 int meml_recv(struct memlink *l, const struct mc_addr *self,
               void *buf, size_t buflen, struct mc_addr *from);
 
-#endif /* MC_MEMLINK_H */
+#endif /* MEML_MEMLINK_H */

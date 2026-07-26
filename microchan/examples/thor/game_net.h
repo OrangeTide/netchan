@@ -9,6 +9,11 @@
  * datagrams with mc_peek_id(). The application owns the transport (UDP on
  * the host, IPX on DOS): it feeds received datagrams in and pulls datagrams
  * to transmit out, so this layer never touches a socket.
+ *
+ * Two prefixes on purpose, against the usual one-module-one-prefix rule:
+ * gclient_ is what the client half exports and gserver_ the server half.
+ * They share this header because they share the wire format above, and a
+ * program links whichever half it needs.
  */
 
 #ifndef GAME_NET_H

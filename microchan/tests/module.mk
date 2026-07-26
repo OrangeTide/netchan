@@ -1,6 +1,6 @@
 # microchan tests.
 #
-#   mc_memlink       an in-memory datagram link: synchronous delivery, and
+#   memlink          an in-memory datagram link: synchronous delivery, and
 #                    loss, duplication, and reordering on a fixed count
 #   test_microchan   the core protocol driven over that link
 #   test_mc_udp      the host UDP transport over real loopback sockets
@@ -13,16 +13,16 @@ ROOT := $(dir $(lastword $(MAKEFILE_LIST)))
 
 ifneq ($(_TARGET_OS),Emscripten)
 
-LIBRARIES += mc_memlink
-mc_memlink_DIR := $(ROOT)
-mc_memlink_SRCS = mc_memlink.c
-mc_memlink_LIBS = microchan_core
-mc_memlink_EXPORTED_CPPFLAGS = -I$(mc_memlink_DIR)
+LIBRARIES += memlink
+memlink_DIR := $(ROOT)
+memlink_SRCS = memlink.c
+memlink_LIBS = microchan_core
+memlink_EXPORTED_CPPFLAGS = -I$(memlink_DIR)
 
 EXECUTABLES += test_microchan
 test_microchan_DIR := $(ROOT)
 test_microchan_SRCS = test_microchan.c
-test_microchan_LIBS = microchan_core mc_memlink
+test_microchan_LIBS = microchan_core memlink
 define test_microchan_TESTCMD
 $(test_microchan_RUN)
 endef
