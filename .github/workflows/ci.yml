@@ -88,6 +88,46 @@ jobs:
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
         run: make run-tests CFLAGS="$SAN_CFLAGS" LDFLAGS="$SAN_LDFLAGS"
 
+  # The suite already replays the checked-in corpus on every job. This is the
+  # other half: a short live run, so new territory gets explored rather than
+  # only the paths a previous run already found.
+  fuzz:
+    name: fuzz netchan_feed
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build the fuzzer
+        run: |
+          clang -fsanitize=fuzzer,address,undefined \
+            -fno-omit-frame-pointer -g -O1 -Wall -W \
+            -Isrc -Itransport \
+            tests/fuzz_netchan_feed.c src/netchan.c -o fuzz_feed
+
+      # -max_total_time bounds the job; -max_len keeps inputs near the MTU the
+      # protocol actually sees. The corpus is copied rather than used in place
+      # so a run never leaves the checkout dirty.
+      - name: Fuzz
+        run: |
+          mkdir -p corpus
+          cp tests/fuzz_corpus/* corpus/
+          ./fuzz_feed corpus -max_total_time=120 -max_len=2048 \
+            -print_final_stats=1
+
+      # A crash lands in the working directory as crash-<sha1>. Keeping it is
+      # what lets the input become a regression test in tests/fuzz_corpus.
+      - name: Save any crashing input
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crash
+          path: |
+            crash-*
+            leak-*
+            timeout-*
+          if-no-files-found: ignore
+
   vendorable:
     name: cc-only core build
     runs-on: ubuntu-latest

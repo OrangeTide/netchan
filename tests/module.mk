@@ -47,6 +47,26 @@ $(netchan_test_RUN)
 endef
 TEST_TARGETS += netchan_test
 
+# --- the fuzz harness, replaying its checked-in corpus ---
+# Built with FUZZ_STANDALONE, which supplies a main() that feeds each file to
+# the same entry point libFuzzer drives. That keeps the corpus useful to every
+# compiler in the matrix rather than only to clang, and turns a crash the
+# fuzzer once found into an ordinary regression test. To fuzz for real:
+#
+#   clang -fsanitize=fuzzer,address,undefined -Isrc -Itransport \
+#       tests/fuzz_netchan_feed.c src/netchan.c -o fuzz_feed
+#   ./fuzz_feed tests/fuzz_corpus
+EXECUTABLES += fuzz_netchan_feed
+fuzz_netchan_feed_DIR := $(ROOT)
+fuzz_netchan_feed_SRCS = fuzz_netchan_feed.c
+fuzz_netchan_feed_LIBS = netchan_core
+fuzz_netchan_feed_CPPFLAGS = -DFUZZ_STANDALONE
+fuzz_netchan_feed_LDFLAGS.Emscripten = -sWASM_ASYNC_COMPILATION=0
+define fuzz_netchan_feed_TESTCMD
+$(fuzz_netchan_feed_RUN) $(fuzz_netchan_feed_DIR)fuzz_corpus/*
+endef
+TEST_TARGETS += fuzz_netchan_feed
+
 # --- WebSocket codec: RFC 6455 known-answer plus frame round-trip ---
 EXECUTABLES += nc_ws_test
 nc_ws_test_DIR := $(ROOT)
