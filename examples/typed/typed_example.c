@@ -125,6 +125,9 @@ main(void)
     struct nc_addr saddr = make_addr(20000);
     struct netchan_event ev;
     struct netchan_chan *tx, *rx = NULL;
+    struct join j;
+    struct say s;
+    struct leave lv;
     uint8_t buf[512];
     int n, delivered = 0;
 
@@ -152,15 +155,15 @@ main(void)
           "topic did not cross with the channel");
 
     /* Send three different message types on the one channel. */
-    struct join j = { .name = "alice", .name_len = 5 };
+    j.name = "alice"; j.name_len = 5;
     n = chat_encode_join(buf, sizeof(buf), &j);
     CHECK(n > 0 && netchan_chan_write(tx, buf, (size_t)n) == n, "write Join");
 
-    struct say s = { .text = "hello, netchan", .text_len = 14 };
+    s.text = "hello, netchan"; s.text_len = 14;
     n = chat_encode_say(buf, sizeof(buf), &s);
     CHECK(n > 0 && netchan_chan_write(tx, buf, (size_t)n) == n, "write Say");
 
-    struct leave lv = { .reason = 0 };
+    lv.reason = 0;
     n = chat_encode_leave(buf, sizeof(buf), &lv);
     CHECK(n > 0 && netchan_chan_write(tx, buf, (size_t)n) == n, "write Leave");
 

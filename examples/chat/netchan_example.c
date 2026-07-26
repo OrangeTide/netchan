@@ -55,12 +55,13 @@ static int
 udp_socket(uint16_t port)
 {
     int fd = socket(AF_INET, SOCK_DGRAM, 0);
+    struct sockaddr_in addr = {0};
+    int one = 1;
+
     if (fd < 0) { perror("socket"); exit(1); }
 
-    int one = 1;
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
 
-    struct sockaddr_in addr = {0};
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     addr.sin_port = htons(port);
@@ -79,10 +80,13 @@ flush_sends(int fd, struct netchan_conn *conn)
     struct nc_addr dst = {0};
 
     for (;;) {
-        size_t n = netchan_send_next(conn, buf, sizeof(buf), &dst);
-        if (n == 0) break;
         struct sockaddr_storage ss;
-        socklen_t sl = nc_udp_to_sockaddr(&dst, &ss);
+        socklen_t sl;
+        size_t n;
+
+        n = netchan_send_next(conn, buf, sizeof(buf), &dst);
+        if (n == 0) break;
+        sl = nc_udp_to_sockaddr(&dst, &ss);
         if (sl == 0) continue;
         sendto(fd, buf, n, 0, (struct sockaddr *)&ss, sl);
     }
@@ -116,10 +120,10 @@ static void
 run_server(void)
 {
     int fd = udp_socket(SERVER_PORT);
+    struct peer peers[MAX_PEERS] = {{0}};
+
     printf("server listening on 127.0.0.1:%d (max %d peers)\n",
            SERVER_PORT, MAX_PEERS);
-
-    struct peer peers[MAX_PEERS] = {{0}};
 
     while (running) {
         /* poll the socket with a short timeout for the tick loop */
@@ -129,20 +133,23 @@ run_server(void)
         if (ret > 0 && (pfd.revents & POLLIN)) {
             uint8_t pkt[2048];
             struct sockaddr_storage from;
+            struct nc_addr naddr;
             socklen_t fromlen = sizeof(from);
-            ssize_t n = recvfrom(fd, pkt, sizeof(pkt), 0,
-                                 (struct sockaddr *)&from, &fromlen);
+            uint32_t id;
+            ssize_t n;
+            int slot = -1;
+
+            n = recvfrom(fd, pkt, sizeof(pkt), 0,
+                         (struct sockaddr *)&from, &fromlen);
             if (n <= 0) goto service;
 
-            struct nc_addr naddr;
             nc_udp_from_sockaddr(&naddr, (struct sockaddr *)&from, fromlen);
 
             /*
              * Demux: peek the connection ID to find which peer
              * this packet belongs to. ID 0 means a new connection.
              */
-            uint32_t id = netchan_peek_id(pkt, (size_t)n);
-            int slot = -1;
+            id = netchan_peek_id(pkt, (size_t)n);
 
             for (int i = 0; i < MAX_PEERS; i++) {
                 if (peers[i].active && netchan_id(peers[i].conn) == id) {
@@ -180,13 +187,14 @@ run_server(void)
 service:
         /* service timers and process events for all peers */
         for (int i = 0; i < MAX_PEERS; i++) {
+            struct netchan_event ev;
+            int gone = 0;       /* the slot was closed inside the loop */
+
             if (!peers[i].active) continue;
 
             netchan_service(peers[i].conn, now_ms());
             flush_sends(fd, peers[i].conn);
 
-            struct netchan_event ev;
-            int gone = 0;       /* the slot was closed inside the loop */
             while (!gone && netchan_poll(peers[i].conn, &ev)) {
                 switch (ev.type) {
                 case NETCHAN_EV_CONNECTED:
@@ -204,8 +212,10 @@ service:
                     break;
 
                 case NETCHAN_EV_DATA: {
-                    char buf[MSG_MAX];
-                    int rd = netchan_chan_read(ev.ch, buf, sizeof(buf) - 1);
+                    char buf[MSG_MAX], out[MSG_MAX];
+                    int rd, outlen;
+
+                    rd = netchan_chan_read(ev.ch, buf, sizeof(buf) - 1);
                     if (rd <= 0) break;
                     buf[rd] = '\0';
 
@@ -222,9 +232,8 @@ service:
                     printf("[%s] %s\n", peers[i].name, buf);
 
                     /* format and broadcast to other peers */
-                    char out[MSG_MAX];
-                    int outlen = snprintf(out, sizeof(out), "[%s] %s",
-                                          peers[i].name, buf);
+                    outlen = snprintf(out, sizeof(out), "[%s] %s",
+                                      peers[i].name, buf);
                     server_broadcast(fd, peers, i, out, (size_t)outlen);
                     break;
                 }
@@ -273,25 +282,25 @@ static void
 run_client(const char *name)
 {
     int fd = udp_socket(0);
-
     struct sockaddr_in saddr = {0};
+    struct netchan_chan *send_ch = NULL;
+    struct netchan_chan *recv_ch = NULL;
+    struct netchan_conn *conn;
+    struct nc_addr server_naddr;
+    int connected = 0;
+
     saddr.sin_family = AF_INET;
     saddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     saddr.sin_port = htons(SERVER_PORT);
 
-    struct nc_addr server_naddr;
     nc_udp_from_sockaddr(&server_naddr, (struct sockaddr *)&saddr,
                          sizeof(saddr));
 
-    struct netchan_conn *conn = netchan_open(0);
+    conn = netchan_open(0);
     netchan_connect(conn, &server_naddr);
     flush_sends(fd, conn);
 
     printf("connecting as \"%s\"...\n", name);
-
-    struct netchan_chan *send_ch = NULL;
-    struct netchan_chan *recv_ch = NULL;
-    int connected = 0;
 
     while (running) {
         /*
@@ -299,6 +308,8 @@ run_client(const char *name)
          * netchan packets; stdin carries user-typed chat messages.
          */
         struct pollfd pfds[2];
+        struct netchan_event ev;
+
         pfds[0].fd = fd;
         pfds[0].events = POLLIN;
         pfds[1].fd = STDIN_FILENO;
@@ -325,7 +336,6 @@ run_client(const char *name)
         flush_sends(fd, conn);
 
         /* process events */
-        struct netchan_event ev;
         while (netchan_poll(conn, &ev)) {
             switch (ev.type) {
             case NETCHAN_EV_CONNECTED:
@@ -369,9 +379,12 @@ run_client(const char *name)
         /* read a line from stdin and send it */
         if (connected && send_ch && (pfds[1].revents & POLLIN)) {
             char line[MSG_MAX];
+
             if (fgets(line, sizeof(line), stdin)) {
+                struct netchan_conn_stats cs;
                 /* strip newline */
                 size_t len = strlen(line);
+
                 if (len > 0 && line[len - 1] == '\n')
                     line[--len] = '\0';
                 if (len == 0) continue;
@@ -382,7 +395,6 @@ run_client(const char *name)
                 }
 
                 /* print stats inline with the message */
-                struct netchan_conn_stats cs;
                 netchan_conn_stats(conn, &cs);
                 printf("(rtt %ums, %u sent, %u recv) > %s\n",
                        cs.rtt_ms, cs.pkts_sent, cs.pkts_recv, line);

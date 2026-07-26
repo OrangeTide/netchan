@@ -313,6 +313,7 @@ on_stdin(struct iox_loop *loop, int fd, unsigned events, void *arg)
 {
     struct client *c = arg;
     char line[1024];
+    char *p, *end;
     ssize_t n;
 
     (void)loop;
@@ -330,7 +331,8 @@ on_stdin(struct iox_loop *loop, int fd, unsigned events, void *arg)
     }
 
     /* One line per message; netchan keeps the boundaries. */
-    char *p = line, *end = line + n;
+    p = line;
+    end = line + n;
     while (p < end) {
         char *nl = memchr(p, '\n', (size_t)(end - p));
         size_t len = nl ? (size_t)(nl - p) : (size_t)(end - p);

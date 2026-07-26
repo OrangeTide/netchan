@@ -72,10 +72,11 @@ static int
 listen_tcp(uint16_t port)
 {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0) { perror("socket"); exit(1); }
-    int one = 1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
     struct sockaddr_in a;
+    int one = 1;
+
+    if (fd < 0) { perror("socket"); exit(1); }
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
     memset(&a, 0, sizeof(a));
     a.sin_family = AF_INET;
     a.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -155,42 +156,45 @@ http_error(int fd, const char *status)
 static void
 serve_static(int fd, const char *req, const char *docroot)
 {
+    const char *p, *end, *rel;
+    char urlpath[512], full[1024], hdr[256];
+    uint8_t chunk[4096];
+    size_t ulen, got;
+    FILE *f;
+    long sz;
+    int hn;
+
     if (strncmp(req, "GET ", 4) != 0) { http_error(fd, "405 Method Not Allowed"); return; }
-    const char *p = req + 4;
-    const char *end = p;
+    p = req + 4;
+    end = p;
     while (*end && *end != ' ' && *end != '\r' && *end != '\n')
         end++;
-    char urlpath[512];
-    size_t ulen = (size_t)(end - p);
+    ulen = (size_t)(end - p);
     if (ulen == 0 || ulen >= sizeof(urlpath)) { http_error(fd, "400 Bad Request"); return; }
     memcpy(urlpath, p, ulen);
     urlpath[ulen] = '\0';
     if (strstr(urlpath, "..")) { http_error(fd, "403 Forbidden"); return; }
 
-    const char *rel = urlpath;
+    rel = urlpath;
     if (!strcmp(rel, "/")) rel = "/play.html";
 
-    char full[1024];
     if ((size_t)snprintf(full, sizeof(full), "%s%s", docroot, rel) >= sizeof(full)) {
         http_error(fd, "414 URI Too Long");
         return;
     }
-    FILE *f = fopen(full, "rb");
+    f = fopen(full, "rb");
     if (!f) { http_error(fd, "404 Not Found"); return; }
     fseek(f, 0, SEEK_END);
-    long sz = ftell(f);
+    sz = ftell(f);
     fseek(f, 0, SEEK_SET);
     if (sz < 0) { fclose(f); http_error(fd, "500 Internal Server Error"); return; }
 
-    char hdr[256];
-    int hn = snprintf(hdr, sizeof(hdr),
+    hn = snprintf(hdr, sizeof(hdr),
         "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %ld\r\n"
         "Connection: close\r\n\r\n", content_type(full), sz);
     if (hn > 0)
         send_all(fd, hdr, (size_t)hn);
 
-    uint8_t chunk[4096];
-    size_t got;
     while ((got = fread(chunk, 1, sizeof(chunk), f)) > 0)
         send_all(fd, chunk, got);
     fclose(f);
@@ -200,14 +204,16 @@ serve_static(int fd, const char *req, const char *docroot)
  * relay
  ****************************************************************/
 
- /* Read available bytes from the browser into c->rx. Returns GW_OK to keep
+/* Read available bytes from the browser into c->rx. Returns GW_OK to keep
  * the client, GW_ERR if it should be dropped. */
 static int
 pump_ws_in(struct client *c, const struct sockaddr_in *srv, const char *docroot)
 {
+    ssize_t n;
+
     if (c->rxn >= sizeof(c->rx))
         return GW_ERR;                   /* client is flooding without framing */
-    ssize_t n = recv(c->ws_fd, c->rx + c->rxn, sizeof(c->rx) - c->rxn, 0);
+    n = recv(c->ws_fd, c->rx + c->rxn, sizeof(c->rx) - c->rxn, 0);
     if (n == 0)
         return GW_ERR;                   /* orderly close */
     if (n < 0)
@@ -216,7 +222,9 @@ pump_ws_in(struct client *c, const struct sockaddr_in *srv, const char *docroot)
 
     if (c->state == CS_HANDSHAKE) {
         char resp[256];
-        int r = nc_ws_accept((const char *)c->rx, c->rxn, resp, sizeof(resp));
+        int r;
+
+        r = nc_ws_accept((const char *)c->rx, c->rxn, resp, sizeof(resp));
         if (r > 0) {
             send_all(c->ws_fd, resp, (size_t)r);
             c->rxn = 0;
@@ -265,15 +273,18 @@ pump_udp_in(struct client *c)
 {
     for (;;) {
         uint8_t dg[DGRAM_MAX];
-        ssize_t n = recv(c->udp_fd, dg, sizeof(dg), 0);
+        uint8_t frame[DGRAM_MAX + 16];
+        ssize_t n;
+        size_t fl;
+
+        n = recv(c->udp_fd, dg, sizeof(dg), 0);
         if (n <= 0) {
             if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
                 return GW_OK;
             return (n == 0) ? GW_OK : GW_ERR;
         }
-        uint8_t frame[DGRAM_MAX + 16];
-        size_t fl = nc_ws_frame_build(frame, sizeof(frame), NC_WS_BINARY,
-                                      dg, (size_t)n, NULL);
+        fl = nc_ws_frame_build(frame, sizeof(frame), NC_WS_BINARY,
+                               dg, (size_t)n, NULL);
         if (fl > 0)
             send_all(c->ws_fd, frame, fl);
     }
@@ -286,12 +297,14 @@ main(int argc, char **argv)
     const char *host = (argc > 2) ? argv[2] : "127.0.0.1";
     uint16_t g_port  = (argc > 3) ? (uint16_t)atoi(argv[3]) : 9000;
     const char *docroot = (argc > 4) ? argv[4] : "web";
+    struct client cs[MAX_CLIENTS];
+    struct sockaddr_in srv;
+    int lfd;
 
     signal(SIGINT, on_sig);
     signal(SIGTERM, on_sig);
     signal(SIGPIPE, SIG_IGN);        /* a dead browser must not kill us */
 
-    struct sockaddr_in srv;
     memset(&srv, 0, sizeof(srv));
     srv.sin_family = AF_INET;
     srv.sin_port = htons(g_port);
@@ -300,11 +313,10 @@ main(int argc, char **argv)
         return 1;
     }
 
-    int lfd = listen_tcp(ws_port);
+    lfd = listen_tcp(ws_port);
     printf("ws gateway on ws://0.0.0.0:%d  ->  udp %s:%d  (docroot '%s')\n",
            ws_port, host, g_port, docroot);
 
-    struct client cs[MAX_CLIENTS];
     for (int i = 0; i < MAX_CLIENTS; i++) { cs[i].ws_fd = cs[i].udp_fd = -1; }
 
     while (running) {
@@ -331,9 +343,10 @@ main(int argc, char **argv)
         if (pfd[0].revents & POLLIN) {
             for (;;) {
                 int cfd = accept(lfd, NULL, NULL);
+                int slot = -1;
+
                 if (cfd < 0)
                     break;
-                int slot = -1;
                 for (int i = 0; i < MAX_CLIENTS; i++)
                     if (cs[i].state == CS_FREE) { slot = i; break; }
                 if (slot < 0) { close(cfd); continue; }   /* full: refuse */
@@ -347,11 +360,12 @@ main(int argc, char **argv)
 
         for (int k = 1; k < nf; k++) {
             int i = map[k];
+            int drop;
+
             if (i < 0 || cs[i].state == CS_FREE)
                 continue;
             if (!(pfd[k].revents & (POLLIN | POLLHUP | POLLERR)))
                 continue;
-            int drop;
             if (pfd[k].fd == cs[i].ws_fd)
                 drop = pump_ws_in(&cs[i], &srv, docroot);
             else
