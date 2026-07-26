@@ -8,6 +8,45 @@ Releases are SemVer and are tagged `vMAJOR.MINOR.PATCH`. The tag is the
 release: GitHub serves a source snapshot for it, which is what
 `tools/vendor.sh` fetches.
 
+## Unreleased
+
+The wire protocol is untouched. Everything here is source level, so a peer
+built from this tree still talks to one built from 0.7.0.
+
+### Changed
+
+- Every layer now names its success and failure returns instead of returning a
+  bare `0` and `-1`: `NETCHAN_OK`/`NETCHAN_ERR`, and the same pair under the
+  `MC_`, `NC_UDP_`, `NC_CRYPTO_`, `NC_AUTH_`, `KS_` and `MEML_` prefixes. They
+  are `#define`, so the return type stays a plain `int` and a caller that tests
+  `< 0` without including the header is still correct. The values are
+  unchanged. `netchan.h` and `microchan.h` kept their error causes as an enum,
+  starting at `-2`.
+- `nc_ws` and `microser` name only a failure value, `NC_WS_ERR` and `MS_ERR`.
+  Their calls return a position or a length, where `0` is a real answer rather
+  than success.
+- Functions that answer a question return `bool`: `nc_crypto_ready`,
+  `nc_crypto_failed`, `ks_authorized_key`, `ks_check_password`,
+  `ks_user_exists`, `ks_keyfile_encrypted`, `mc_ipx_available`,
+  `secure_link_up` and `auth_link_up`.
+- Source files no longer carry a licence line. The root `LICENSE` is the one
+  place the terms live.
+- `docs/coding-style.md` is the written convention all of the above follows.
+
+### Breaking
+
+- The `nc_auth` conversation states are renamed to `NC_AUTH_STATE_PENDING`,
+  `NC_AUTH_STATE_OK` and `NC_AUTH_STATE_DENIED`. `NC_AUTH_OK` now means a call
+  succeeded, which is what it means in every other layer. Code that compared
+  `nc_auth_state()` against the old names has to follow, and it will not fail
+  quietly: the old spellings no longer exist.
+- The `nc_auth_server_cb` callbacks `check_key` and `check_password` return
+  `bool` rather than `int`. An existing implementation keeps working once its
+  own signature changes; the compiler flags the mismatch.
+- `auth/keystore.h` guards with `KS_KEYSTORE_H` and `examples/common/sockutil.h`
+  with `SU_SOCKUTIL_H`, so a vendored copy cannot collide with a host project's
+  own `KEYSTORE_H` or `SOCKUTIL_H`.
+
 ## 0.7.0 - 2026-07-24
 
 ### Added
