@@ -25,6 +25,16 @@ moves because the source API does.
   signature line, a missing tag line, and declarations below the first
   statement of a block. It runs as its own CI job, so the conventions hold
   without a manual sweep.
+- `make analyze`, a `gcc -fanalyzer` build that fails on a warning in the
+  project's own code. The analyzer walks execution paths rather than matching
+  patterns, so it catches what a review misses: it found a descriptor leaked
+  down a failure branch in the secure-link test and a `bind` on an unchecked
+  `socket` result in the UDP test, both fixed here.
+- A fuzz harness for `netchan_feed`, the core's entire untrusted surface, with
+  a checked-in corpus. `make run-tests` replays the corpus on every platform,
+  which turns any input the fuzzer once crashed on into a regression test, and
+  a CI job fuzzes for two minutes on top of that to explore new ground. Half a
+  million executions found no crash.
 
 ### Changed
 

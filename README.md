@@ -71,7 +71,19 @@ never names a socket.
 ```sh
 make                      # library, tests, and examples
 make run-tests            # the whole suite
+make lint                 # check the tree against docs/coding-style.md
+make analyze              # build under gcc -fanalyzer
 make NETCHAN_EXAMPLES=0   # library and tests only
+```
+
+`netchan_feed` is the library's whole untrusted surface, so it has a fuzz
+harness in `tests/fuzz_netchan_feed.c`. The suite replays its checked-in
+corpus on every platform; to fuzz for real:
+
+```sh
+clang -fsanitize=fuzzer,address,undefined -Isrc -Itransport \
+    tests/fuzz_netchan_feed.c src/netchan.c -o fuzz_feed
+./fuzz_feed tests/fuzz_corpus
 ```
 
 Binaries land in `_out/<triplet>/bin/`. A minimal `cc`-only build of the core
