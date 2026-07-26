@@ -26,13 +26,15 @@ static void
 sha1_block(struct sha1 *s, const uint8_t *p)
 {
     uint32_t w[80];
+    uint32_t a, b, c, d, e;
+
     for (int i = 0; i < 16; i++)
         w[i] = (uint32_t)p[i * 4] << 24 | (uint32_t)p[i * 4 + 1] << 16 |
                (uint32_t)p[i * 4 + 2] << 8 | (uint32_t)p[i * 4 + 3];
     for (int i = 16; i < 80; i++)
         w[i] = rol32(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
 
-    uint32_t a = s->h[0], b = s->h[1], c = s->h[2], d = s->h[3], e = s->h[4];
+    a = s->h[0]; b = s->h[1]; c = s->h[2]; d = s->h[3]; e = s->h[4];
     for (int i = 0; i < 80; i++) {
         uint32_t f, k;
         if (i < 20)      { f = (b & c) | (~b & d);            k = 0x5a827999; }
@@ -73,11 +75,12 @@ sha1_final(struct sha1 *s, uint8_t out[20])
 {
     uint64_t bits = s->len * 8;
     uint8_t pad = 0x80;
-    sha1_update(s, &pad, 1);
     uint8_t zero = 0;
+    uint8_t lenbe[8];
+
+    sha1_update(s, &pad, 1);
     while (s->n != 56)
         sha1_update(s, &zero, 1);
-    uint8_t lenbe[8];
     for (int i = 0; i < 8; i++)
         lenbe[i] = (uint8_t)(bits >> (56 - i * 8));
     sha1_update(s, lenbe, 8);
@@ -152,13 +155,17 @@ static const char *
 find_header(const char *req, size_t len, const char *name, size_t *val_len)
 {
     size_t nlen = strlen(name);
+
     for (size_t i = 0; i + nlen < len; i++) {
+        const char *v, *end, *e;
+        size_t j = 0;
+
         /* header names start at the beginning of a line */
         if (i != 0 && !(req[i - 1] == '\n'))
             continue;
-        size_t j = 0;
         while (j < nlen) {
             char a = req[i + j], b = name[j];
+
             if (a >= 'A' && a <= 'Z') a += 32;
             if (b >= 'A' && b <= 'Z') b += 32;
             if (a != b) break;
@@ -166,11 +173,11 @@ find_header(const char *req, size_t len, const char *name, size_t *val_len)
         }
         if (j != nlen || req[i + nlen] != ':')
             continue;
-        const char *v = req + i + nlen + 1;
-        const char *end = req + len;
+        v = req + i + nlen + 1;
+        end = req + len;
         while (v < end && (*v == ' ' || *v == '\t'))
             v++;
-        const char *e = v;
+        e = v;
         while (e < end && *e != '\r' && *e != '\n')
             e++;
         *val_len = (size_t)(e - v);
@@ -182,21 +189,24 @@ find_header(const char *req, size_t len, const char *name, size_t *val_len)
 int
 nc_ws_accept(const char *req, size_t req_len, char *resp, size_t resp_cap)
 {
+    size_t up_len, key_len;
+    const char *up, *key;
+    char akey[32];
+    int ws = 0, n;
     /* Need the full header block before we can answer. */
     int have_end = 0;
+
     for (size_t i = 0; i + 3 < req_len; i++)
         if (req[i] == '\r' && req[i + 1] == '\n' &&
             req[i + 2] == '\r' && req[i + 3] == '\n') { have_end = 1; break; }
     if (!have_end)
         return 0;
 
-    size_t up_len, key_len;
-    const char *up = find_header(req, req_len, "Upgrade", &up_len);
-    const char *key = find_header(req, req_len, "Sec-WebSocket-Key", &key_len);
+    up = find_header(req, req_len, "Upgrade", &up_len);
+    key = find_header(req, req_len, "Sec-WebSocket-Key", &key_len);
     if (!up || !key || key_len == 0)
         return NC_WS_ERR;
     /* Upgrade value must contain "websocket" (case-insensitive). */
-    int ws = 0;
     for (size_t i = 0; up_len >= 9 && i + 9 <= up_len; i++) {
         if ((up[i] | 32) == 'w' && (up[i + 1] | 32) == 'e' &&
             (up[i + 2] | 32) == 'b' && (up[i + 3] | 32) == 's' &&
@@ -207,9 +217,8 @@ nc_ws_accept(const char *req, size_t req_len, char *resp, size_t resp_cap)
     if (!ws)
         return NC_WS_ERR;
 
-    char akey[32];
     accept_key(akey, key, key_len);
-    int n = snprintf(resp, resp_cap,
+    n = snprintf(resp, resp_cap,
         "HTTP/1.1 101 Switching Protocols\r\n"
         "Upgrade: websocket\r\n"
         "Connection: Upgrade\r\n"
@@ -224,9 +233,11 @@ nc_ws_client_request(char *buf, size_t cap, const char *host,
                      const char *path, const uint8_t key16[16], char expect[32])
 {
     char key64[32];
+    int n;
+
     base64(key64, key16, 16);     /* 24 chars + NUL */
     accept_key(expect, key64, strlen(key64));
-    int n = snprintf(buf, cap,
+    n = snprintf(buf, cap,
         "GET %s HTTP/1.1\r\n"
         "Host: %s\r\n"
         "Upgrade: websocket\r\n"
@@ -241,7 +252,10 @@ nc_ws_client_request(char *buf, size_t cap, const char *host,
 int
 nc_ws_client_verify(const char *resp, size_t len, const char *expect)
 {
+    const char *acc;
+    size_t alen;
     int have_end = 0;
+
     for (size_t i = 0; i + 3 < len; i++)
         if (resp[i] == '\r' && resp[i + 1] == '\n' &&
             resp[i + 2] == '\r' && resp[i + 3] == '\n') { have_end = 1; break; }
@@ -250,8 +264,7 @@ nc_ws_client_verify(const char *resp, size_t len, const char *expect)
     /* Status line must be 101. */
     if (len < 12 || memcmp(resp, "HTTP/1.1 101", 12) != 0)
         return NC_WS_ERR;
-    size_t alen;
-    const char *acc = find_header(resp, len, "Sec-WebSocket-Accept", &alen);
+    acc = find_header(resp, len, "Sec-WebSocket-Accept", &alen);
     if (!acc || alen != strlen(expect) || memcmp(acc, expect, alen) != 0)
         return NC_WS_ERR;
     return 1;
@@ -264,11 +277,15 @@ nc_ws_client_verify(const char *resp, size_t len, const char *expect)
 long
 nc_ws_frame_parse(uint8_t *buf, size_t len, struct nc_ws_frame *f)
 {
+    uint8_t *payload;
+    uint64_t plen;
+    size_t hdr = 2;
+    int masked;
+
     if (len < 2)
         return 0;
-    int masked = (buf[1] & 0x80) != 0;
-    uint64_t plen = buf[1] & 0x7f;
-    size_t hdr = 2;
+    masked = (buf[1] & 0x80) != 0;
+    plen = buf[1] & 0x7f;
 
     if (plen == 126) {
         if (len < 4) return 0;
@@ -286,7 +303,7 @@ nc_ws_frame_parse(uint8_t *buf, size_t len, struct nc_ws_frame *f)
     if (len < hdr + plen)
         return 0;                 /* frame not fully arrived yet */
 
-    uint8_t *payload = buf + hdr;
+    payload = buf + hdr;
     if (masked) {
         const uint8_t *mk = buf + hdr - 4;
         for (uint64_t i = 0; i < plen; i++)
@@ -303,7 +320,11 @@ size_t
 nc_ws_frame_build(uint8_t *out, size_t cap, int opcode,
                   const void *payload, size_t payload_len, const uint8_t mask4[4])
 {
+    const uint8_t *src = payload;
     size_t hdr = 2;
+    size_t o;
+    uint8_t mbit;
+
     if (payload_len > 0xffff)
         hdr += 8;
     else if (payload_len >= 126)
@@ -314,8 +335,7 @@ nc_ws_frame_build(uint8_t *out, size_t cap, int opcode,
         return 0;
 
     out[0] = (uint8_t)(0x80 | (opcode & 0x0f));   /* FIN + opcode */
-    uint8_t mbit = mask4 ? 0x80 : 0;
-    size_t o;
+    mbit = mask4 ? 0x80 : 0;
     if (payload_len > 0xffff) {
         out[1] = mbit | 127;
         for (int i = 0; i < 8; i++)
@@ -331,7 +351,6 @@ nc_ws_frame_build(uint8_t *out, size_t cap, int opcode,
         o = 2;
     }
 
-    const uint8_t *src = payload;
     if (mask4) {
         memcpy(out + o, mask4, 4);
         o += 4;
