@@ -30,13 +30,13 @@ temp_dir(char *buf, size_t n)
     DWORD len = GetTempPathA((DWORD)sizeof(base), base);
 
     if (len == 0 || len >= sizeof(base))
-        return -1;
+        return KS_ERR;
     snprintf(buf, n, "%snc_auth_ks_%lu", base,
              (unsigned long)GetCurrentProcessId());
-    return _mkdir(buf) == 0 ? 0 : -1;
+    return _mkdir(buf) == 0 ? KS_OK : KS_ERR;
 #else
     snprintf(buf, n, "/tmp/nc_auth_ks_XXXXXX");
-    return mkdtemp(buf) ? 0 : -1;
+    return mkdtemp(buf) ? KS_OK : KS_ERR;
 #endif
 }
 

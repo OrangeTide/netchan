@@ -41,6 +41,15 @@ enum {
 #define IN_MAKE(move, fire) \
     (uint8_t)(((move) & 0x0F) | (((fire) & 0x0F) << 4))
 
+#define GAME_ERR (-1)
+
+/*
+ * Not an error: what a direction lookup answers when the vector points
+ * nowhere. Kept apart from GAME_ERR because the two say different things,
+ * even though both are negative and both are caught by a < 0 test.
+ */
+#define GAME_DIR_NONE (-1)
+
 /* 8 directions, clockwise from north; index with dir */
 extern const int8_t game_dx[8];
 extern const int8_t game_dy[8];
@@ -86,7 +95,7 @@ struct world {
 /** Generate the map and spawn creatures from a seed (server side). */
 void game_init(struct world *w, uint16_t seed);
 
-/** Add a player at a free floor tile; returns its index or -1. */
+/** Add a player at a free floor tile; returns its index, or GAME_ERR. */
 int game_add_player(struct world *w);
 
 /** Record the latest input for a player. */

@@ -6,6 +6,12 @@
 #include <stddef.h>
 #include <termios.h>
 
+/*
+ * No PROMPT_OK: prompt_reader_feed is tri-state, returning 1 for a complete
+ * line, 0 when more input is needed, and PROMPT_ERR on EOF or error.
+ */
+#define PROMPT_ERR (-1)
+
 #define PROMPT_MAX 256
 
 /*
@@ -39,7 +45,7 @@ struct prompt_reader {
 void prompt_reader_begin(struct prompt_reader *pr, const char *prompt);
 
 /* Consume one byte. Returns 1 when the line is complete and NUL terminated
- * in pr->buf, 0 when more is needed, -1 on EOF or error. */
+ * in pr->buf, 0 when more is needed, PROMPT_ERR on EOF or error. */
 int prompt_reader_feed(struct prompt_reader *pr, int fd);
 
 /* Restore the terminal and wipe the buffer. Safe to call more than once. */

@@ -21,6 +21,9 @@
 #include "mc_addr.h"
 #include "microchan.h"
 
+#define MEML_OK  (0)
+#define MEML_ERR (-1)
+
 #define MEML_MAX_EP  4          /* endpoints on one link                   */
 #define MEML_MAX_Q   64         /* datagrams queued per endpoint           */
 
@@ -54,13 +57,14 @@ struct memlink {
 /** Reset a link to empty with no impairments. */
 void meml_init(struct memlink *l);
 
-/** Claim an endpoint and write its address. Returns 0, or -1 if the link
+/** Claim an endpoint and write its address. Returns MEML_OK, or MEML_ERR if
+ *  the link
  *  is full. */
 int meml_open(struct memlink *l, struct mc_addr *out);
 
 /** Offer one datagram. Impairments apply here, so the count a datagram is
  *  measured against is the order it was sent, not the order it lands.
- *  Returns 0 when the datagram was accepted, which includes being dropped
+ *  Returns MEML_OK when the datagram was accepted, which includes being dropped
  *  on purpose, and -1 when the destination is unknown or its queue is
  *  full. */
 int meml_send(struct memlink *l, const struct mc_addr *from,

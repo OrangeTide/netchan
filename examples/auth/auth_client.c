@@ -60,20 +60,20 @@ verify_host(void *ctx, const uint8_t *peer_pk)
 
     if (!peer_pk) {
         fprintf(stderr, "client: server presented no identity key\n");
-        return -1;
+        return NC_CRYPTO_ERR;
     }
     ks_hex_encode(hex, peer_pk, 32);
 
     switch (ks_known_host(c->known_hosts, c->host, peer_pk, stored)) {
     case KS_HOST_MATCH:
-        return 0;
+        return NC_CRYPTO_OK;
 
     case KS_HOST_UNKNOWN:
         printf("* unknown host %s, key %s\n", c->host, hex);
         printf("* permanently added to %s\n", c->known_hosts);
         fflush(stdout);
         ks_known_host_add(c->known_hosts, c->host, peer_pk);
-        return 0;
+        return NC_CRYPTO_OK;
 
     default:
         ks_hex_encode(old_hex, stored, 32);
@@ -87,7 +87,7 @@ verify_host(void *ctx, const uint8_t *peer_pk)
             "    %s\n"
             "  Remove the stale line if you know why it changed.\n\n",
             c->host, c->known_hosts, old_hex, hex);
-        return -1;
+        return NC_CRYPTO_ERR;
     }
 }
 

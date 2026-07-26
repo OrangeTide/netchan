@@ -58,6 +58,9 @@ on_signal(struct iox_loop *loop, int signo, void *arg)
     iox_loop_stop(loop);
 }
 
+/* udp_bind returns a descriptor, so only the failure value needs a name. */
+#define ECHO_ERR (-1)
+
 static int
 udp_bind(int port)
 {
@@ -66,7 +69,7 @@ udp_bind(int port)
 
     fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (fd < 0)
-        return -1;
+        return ECHO_ERR;
     (void)setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
 
     memset(&sa, 0, sizeof(sa));
@@ -75,7 +78,7 @@ udp_bind(int port)
     sa.sin_port = htons((uint16_t)port);
     if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
         close(fd);
-        return -1;
+        return ECHO_ERR;
     }
     fl = fcntl(fd, F_GETFL, 0);
     if (fl >= 0)

@@ -39,10 +39,10 @@ static int
 push(struct meml_ep *e, const struct meml_pkt *p)
 {
     if (e->count >= MEML_MAX_Q)
-        return -1;
+        return MEML_ERR;
     e->q[(e->head + e->count) % MEML_MAX_Q] = *p;
     e->count++;
-    return 0;
+    return MEML_OK;
 }
 
 void
@@ -62,9 +62,9 @@ meml_open(struct memlink *l, struct mc_addr *out)
         l->ep[i].used = 1;
         addr_for(&l->ep[i].addr, i);
         *out = l->ep[i].addr;
-        return 0;
+        return MEML_OK;
     }
-    return -1;
+    return MEML_ERR;
 }
 
 int
@@ -76,7 +76,7 @@ meml_send(struct memlink *l, const struct mc_addr *from,
     unsigned n;
 
     if (!dst || len > sizeof(p.buf))
-        return -1;
+        return MEML_ERR;
 
     memcpy(p.buf, buf, len);
     p.len = len;
@@ -86,7 +86,7 @@ meml_send(struct memlink *l, const struct mc_addr *from,
 
     if (l->drop_every && (n % l->drop_every) == 0) {
         l->dropped++;
-        return 0;
+        return MEML_OK;
     }
 
     /*
@@ -98,11 +98,11 @@ meml_send(struct memlink *l, const struct mc_addr *from,
         dst->held = p;
         dst->have_held = 1;
         l->reordered++;
-        return 0;
+        return MEML_OK;
     }
 
     if (push(dst, &p) != 0)
-        return -1;
+        return MEML_ERR;
     l->delivered++;
 
     if (l->dup_every && (n % l->dup_every) == 0) {
@@ -117,7 +117,7 @@ meml_send(struct memlink *l, const struct mc_addr *from,
         if (push(dst, &dst->held) == 0)
             l->delivered++;
     }
-    return 0;
+    return MEML_OK;
 }
 
 int
@@ -128,7 +128,7 @@ meml_recv(struct memlink *l, const struct mc_addr *self,
     struct meml_pkt *p;
 
     if (!e)
-        return -1;
+        return MEML_ERR;
 
     if (e->count == 0 && e->have_held) {
         e->have_held = 0;
@@ -140,7 +140,7 @@ meml_recv(struct memlink *l, const struct mc_addr *self,
 
     p = &e->q[e->head];
     if (p->len > buflen)
-        return -1;
+        return MEML_ERR;
     memcpy(buf, p->buf, p->len);
     if (from)
         *from = p->from;

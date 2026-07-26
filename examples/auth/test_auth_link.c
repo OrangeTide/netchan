@@ -1,5 +1,6 @@
 /* test_auth_link.c : authenticated echo over a real loopback socket */
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -77,8 +78,8 @@ verify_host(void *ctx, const uint8_t *peer_pk)
 {
     (void)ctx;
     if (!peer_pk)
-        return -1;
-    return crypto_verify32(peer_pk, expect_pk) == 0 ? 0 : -1;
+        return NC_CRYPTO_ERR;
+    return crypto_verify32(peer_pk, expect_pk) == 0 ? NC_CRYPTO_OK : NC_CRYPTO_ERR;
 }
 
 /****************************************************************
@@ -132,7 +133,7 @@ watchdog(struct iox_loop *l, void *arg)
  * One run of the whole stack
  ****************************************************************/
 
-static int
+static bool
 run_once(const char *what)
 {
     struct auth_link_cfg scfg, ccfg;
@@ -150,7 +151,7 @@ run_once(const char *what)
     if (sfd < 0 || cfd < 0) {
         printf("FAIL: cannot bind loopback sockets\n");
         failures++;
-        return -1;
+        return false;
     }
     port = su_local_port(sfd);
     if (port < 0 || su_resolve("127.0.0.1", port, &peer) != 0) {
@@ -158,7 +159,7 @@ run_once(const char *what)
         failures++;
         close(sfd);
         close(cfd);
-        return -1;
+        return false;
     }
 
     loop = iox_loop_new();
@@ -191,7 +192,7 @@ run_once(const char *what)
         iox_loop_free(loop);
         close(sfd);
         close(cfd);
-        return -1;
+        return false;
     }
 
     wd = iox_timer_add(loop, WATCHDOG_MS, watchdog, NULL);
@@ -203,7 +204,7 @@ run_once(const char *what)
     iox_loop_free(loop);
     close(sfd);
     close(cfd);
-    return 0;
+    return true;
 }
 
 /****************************************************************
@@ -309,13 +310,13 @@ main(void)
     /* 1. The good path: the pinned host key matches and the user's key is
      *    authorised, so an application round trip completes. */
     memcpy(expect_pk, host_pk, 32);
-    if (run_once("authenticated echo") == 0)
+    if (run_once("authenticated echo"))
         check("encrypted authenticated echo round-trip", echo_seen);
 
     /* 2. The host key is not the one on file. The client must refuse before
      *    it ever sends a credential. */
     memset(expect_pk, 0x55, sizeof(expect_pk));
-    if (run_once("host key mismatch") == 0) {
+    if (run_once("host key mismatch")) {
         check("wrong host key is refused", host_refused);
         check("nothing was echoed to a rejected host", !echo_seen);
     }

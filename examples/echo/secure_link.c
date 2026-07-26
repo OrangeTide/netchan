@@ -312,25 +312,25 @@ secure_link_send(struct secure_link *sl, const void *data, size_t len)
     int spins;
 
     if (!sl->up || !sl->tx)
-        return -1;
+        return SECURE_LINK_ERR;
 
     for (spins = 0; spins < 64; spins++) {
         int w = netchan_chan_write(sl->tx, data, len);
 
         if (w == (int)len) {
             flush_out(sl);
-            return 0;
+            return SECURE_LINK_OK;
         }
         if (w != NETCHAN_ERR_FLOW && w != NETCHAN_ERR_AGAIN)
-            return -1;
+            return SECURE_LINK_ERR;
         /* Window full: service to reap acks, then retry. */
         netchan_service(sl->conn, now_ms());
         flush_out(sl);
     }
-    return -1;
+    return SECURE_LINK_ERR;
 }
 
-int
+bool
 secure_link_up(const struct secure_link *sl)
 {
     return sl->up;

@@ -212,8 +212,8 @@ test_no_midsession_rekey(void)
 static int
 expect_key(void *ctx, const uint8_t *peer_static_pk)
 {
-    if (peer_static_pk == NULL) return -1;
-    return memcmp(ctx, peer_static_pk, 32) == 0 ? 0 : -1;
+    if (peer_static_pk == NULL) return NC_CRYPTO_ERR;
+    return memcmp(ctx, peer_static_pk, 32) == 0 ? NC_CRYPTO_OK : NC_CRYPTO_ERR;
 }
 
 static void

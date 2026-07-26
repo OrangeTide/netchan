@@ -32,7 +32,7 @@ vec_to_dir(int dx, int dy)
     for (i = 0; i < 8; i++)
         if (game_dx[i] == dx && game_dy[i] == dy)
             return i;
-    return -1;
+    return GAME_DIR_NONE;
 }
 
 static int
@@ -203,7 +203,7 @@ game_add_player(struct world *w)
         struct player *p = &w->players[i];
         if (!p->alive && p->hp == 0 && respawn_t[i] == 0) {
             if (!random_floor(w, &p->x, &p->y))
-                return -1;
+                return GAME_ERR;
             p->facing = 4;
             p->alive = 1;
             p->hp = PLAYER_HP;
@@ -214,7 +214,7 @@ game_add_player(struct world *w)
             return i;
         }
     }
-    return -1;
+    return GAME_ERR;
 }
 
 void

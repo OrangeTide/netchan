@@ -83,11 +83,11 @@ dir_of(int dx, int dy)
     dx = sgn(dx);
     dy = sgn(dy);
     if (!dx && !dy)
-        return -1;
+        return GAME_DIR_NONE;
     for (k = 0; k < 8; k++)
         if (game_dx[k] == dx && game_dy[k] == dy)
             return k;
-    return -1;
+    return GAME_DIR_NONE;
 }
 
 /* Twin-stick input: arrows steer, WASD aims and fires in that direction.

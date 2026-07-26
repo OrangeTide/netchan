@@ -98,6 +98,9 @@ on_signal(struct iox_loop *loop, int signo, void *arg)
     iox_loop_stop(loop);
 }
 
+#define ECHO_OK  (0)
+#define ECHO_ERR (-1)
+
 /* Resolve host/port to an nc_addr via the UDP backend's packer. */
 static int
 resolve(const char *host, const char *port, struct nc_addr *out, int *family)
@@ -110,11 +113,11 @@ resolve(const char *host, const char *port, struct nc_addr *out, int *family)
     hints.ai_socktype = SOCK_DGRAM;
     rc = getaddrinfo(host, port, &hints, &res);
     if (rc != 0)
-        return -1;
+        return ECHO_ERR;
     *family = res->ai_family;
     rc = nc_udp_from_sockaddr(out, res->ai_addr, (socklen_t)res->ai_addrlen);
     freeaddrinfo(res);
-    return rc;
+    return rc == NC_UDP_OK ? ECHO_OK : ECHO_ERR;
 }
 
 int

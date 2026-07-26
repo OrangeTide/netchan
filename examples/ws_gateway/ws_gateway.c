@@ -60,6 +60,9 @@ set_nonblock(int fd)
         fcntl(fd, F_SETFL, fl | O_NONBLOCK);
 }
 
+#define GW_OK  (0)
+#define GW_ERR (-1)
+
 static int
 listen_tcp(uint16_t port)
 {
@@ -85,10 +88,10 @@ udp_to_server(const struct sockaddr_in *srv)
 {
     int fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (fd < 0)
-        return -1;
+        return GW_ERR;
     if (connect(fd, (const struct sockaddr *)srv, sizeof(*srv)) < 0) {
         close(fd);
-        return -1;
+        return GW_ERR;
     }
     set_nonblock(fd);
     return fd;
@@ -192,18 +195,18 @@ serve_static(int fd, const char *req, const char *docroot)
  * relay
  ****************************************************************/
 
-/* Read available bytes from the browser into c->rx. Returns 0 to keep the
- * client, -1 if it should be dropped. */
+ /* Read available bytes from the browser into c->rx. Returns GW_OK to keep
+ * the client, GW_ERR if it should be dropped. */
 static int
 pump_ws_in(struct client *c, const struct sockaddr_in *srv, const char *docroot)
 {
     if (c->rxn >= sizeof(c->rx))
-        return -1;                   /* client is flooding without framing */
+        return GW_ERR;                   /* client is flooding without framing */
     ssize_t n = recv(c->ws_fd, c->rx + c->rxn, sizeof(c->rx) - c->rxn, 0);
     if (n == 0)
-        return -1;                   /* orderly close */
+        return GW_ERR;                   /* orderly close */
     if (n < 0)
-        return (errno == EAGAIN || errno == EWOULDBLOCK) ? 0 : -1;
+        return (errno == EAGAIN || errno == EWOULDBLOCK) ? GW_OK : GW_ERR;
     c->rxn += (size_t)n;
 
     if (c->state == CS_HANDSHAKE) {
@@ -214,15 +217,15 @@ pump_ws_in(struct client *c, const struct sockaddr_in *srv, const char *docroot)
             c->rxn = 0;
             c->udp_fd = udp_to_server(srv);
             if (c->udp_fd < 0)
-                return -1;
+                return GW_ERR;
             c->state = CS_OPEN;
-            return 0;
+            return GW_OK;
         }
         if (r == 0)
-            return 0;                /* need more of the request */
+            return GW_OK;                /* need more of the request */
         /* Not a WebSocket upgrade: treat as a plain file request and close. */
         serve_static(c->ws_fd, (const char *)c->rx, docroot);
-        return -1;
+        return GW_ERR;
     }
 
     /* CS_OPEN: parse as many whole frames as have arrived. */
@@ -232,12 +235,12 @@ pump_ws_in(struct client *c, const struct sockaddr_in *srv, const char *docroot)
         if (used == 0)
             break;                   /* partial frame, wait for more */
         if (used < 0)
-            return -1;               /* protocol error */
+            return GW_ERR;               /* protocol error */
         if (f.opcode == NC_WS_BINARY && f.payload_len > 0 &&
             f.payload_len <= DGRAM_MAX) {
             send(c->udp_fd, f.payload, f.payload_len, 0);
         } else if (f.opcode == NC_WS_CLOSE) {
-            return -1;
+            return GW_ERR;
         } else if (f.opcode == NC_WS_PING) {
             uint8_t pong[DGRAM_MAX + 16];
             size_t pn = nc_ws_frame_build(pong, sizeof(pong), NC_WS_PONG,
@@ -248,7 +251,7 @@ pump_ws_in(struct client *c, const struct sockaddr_in *srv, const char *docroot)
         memmove(c->rx, c->rx + used, c->rxn - (size_t)used);
         c->rxn -= (size_t)used;
     }
-    return 0;
+    return GW_OK;
 }
 
 /* Drain the server's UDP replies and frame them back to the browser. */
@@ -260,8 +263,8 @@ pump_udp_in(struct client *c)
         ssize_t n = recv(c->udp_fd, dg, sizeof(dg), 0);
         if (n <= 0) {
             if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
-                return 0;
-            return (n == 0) ? 0 : -1;
+                return GW_OK;
+            return (n == 0) ? GW_OK : GW_ERR;
         }
         uint8_t frame[DGRAM_MAX + 16];
         size_t fl = nc_ws_frame_build(frame, sizeof(frame), NC_WS_BINARY,

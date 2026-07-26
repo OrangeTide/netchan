@@ -5,9 +5,13 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 #include "nc_addr.h"
 #include "nc_crypto.h"
+
+#define SECURE_LINK_OK  (0)
+#define SECURE_LINK_ERR (-1)
 
 struct iox_loop;
 struct netchan_conn;
@@ -63,12 +67,12 @@ struct secure_link *secure_link_open(struct iox_loop *loop, int fd, int server,
                                      const uint8_t *psk, int use_crypto,
                                      const struct secure_link_cb *cb);
 
-/* Queue application bytes on the reliable channel. Returns 0 on success,
- * -1 if the link is not up yet or the send window stayed full. */
+/* Queue application bytes on the reliable channel. Returns SECURE_LINK_OK,
+ * or SECURE_LINK_ERR if the link is not up yet or the window stayed full. */
 int secure_link_send(struct secure_link *sl, const void *data, size_t len);
 
-/* Non-zero once the session is established and secure_link_send may be used. */
-int secure_link_up(const struct secure_link *sl);
+/* True once the session is established and secure_link_send may be used. */
+bool secure_link_up(const struct secure_link *sl);
 
 /* Tear down the session and release the socket. */
 void secure_link_close(struct secure_link *sl);

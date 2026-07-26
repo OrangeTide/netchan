@@ -10,6 +10,7 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <netinet/in.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -30,6 +31,9 @@ struct endpoint {
     int                 sent;
 };
 
+/* This program's own failure value. The test functions return bool. */
+#define TEST_ERR (-1)
+
 static int
 udp_ephemeral(int *port_out)
 {
@@ -39,7 +43,7 @@ udp_ephemeral(int *port_out)
 
     fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (fd < 0)
-        return -1;
+        return TEST_ERR;
     memset(&sa, 0, sizeof(sa));
     sa.sin_family = AF_INET;
     sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -47,7 +51,7 @@ udp_ephemeral(int *port_out)
     if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0 ||
         getsockname(fd, (struct sockaddr *)&sa, &slen) < 0) {
         close(fd);
-        return -1;
+        return TEST_ERR;
     }
     fl = fcntl(fd, F_GETFL, 0);
     if (fl >= 0)
@@ -131,7 +135,7 @@ stop_now(struct iox_loop *l, void *arg)
  * failure is invisible in any test where both ends answer promptly, which is
  * exactly why the round trip above passed while it was broken.
  */
-static int
+static bool
 test_tick_keeps_running(void)
 {
     struct iox_loop *loop;
@@ -147,7 +151,7 @@ test_tick_keeps_running(void)
     cfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sfd < 0 || cfd < 0) {
         fprintf(stderr, "FAIL: tick test sockets\n");
-        return -1;
+        return false;
     }
     fl = fcntl(cfd, F_GETFL, 0);
     if (fl >= 0)
@@ -157,9 +161,9 @@ test_tick_keeps_running(void)
     sa.sin_family = AF_INET;
     sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     sa.sin_port = htons((uint16_t)sport);
-    if (nc_udp_from_sockaddr(&peer, (struct sockaddr *)&sa, sizeof(sa)) != 0) {
+    if (nc_udp_from_sockaddr(&peer, (struct sockaddr *)&sa, sizeof(sa)) != NC_UDP_OK) {
         fprintf(stderr, "FAIL: tick test address\n");
-        return -1;
+        return false;
     }
 
     loop = iox_loop_new();
@@ -169,7 +173,7 @@ test_tick_keeps_running(void)
     client = secure_link_open(loop, cfd, 0, &peer, psk, 1, &ccb);
     if (!client) {
         fprintf(stderr, "FAIL: tick test secure_link_open\n");
-        return -1;
+        return false;
     }
 
     iox_timer_add(loop, 400, stop_now, NULL);
@@ -186,9 +190,9 @@ test_tick_keeps_running(void)
     if (hello_count < 3) {
         fprintf(stderr, "FAIL: only %d datagram(s) sent to a silent peer\n",
                 hello_count);
-        return -1;
+        return false;
     }
-    return 0;
+    return true;
 }
 
 /****************************************************************
@@ -254,7 +258,7 @@ close_when_up(struct iox_loop *l, void *arg)
  * can fire that callback in the time allowed, which is the point: a close that
  * only frees would leave the server silent until long after the loop stopped.
  */
-static int
+static bool
 test_close_reaches_peer(void)
 {
     struct iox_loop *loop;
@@ -272,7 +276,7 @@ test_close_reaches_peer(void)
     cfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sfd < 0 || cfd < 0) {
         fprintf(stderr, "FAIL: close test sockets\n");
-        return -1;
+        return false;
     }
     fl = fcntl(cfd, F_GETFL, 0);
     if (fl >= 0)
@@ -282,9 +286,9 @@ test_close_reaches_peer(void)
     sa.sin_family = AF_INET;
     sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     sa.sin_port = htons((uint16_t)sport);
-    if (nc_udp_from_sockaddr(&peer, (struct sockaddr *)&sa, sizeof(sa)) != 0) {
+    if (nc_udp_from_sockaddr(&peer, (struct sockaddr *)&sa, sizeof(sa)) != NC_UDP_OK) {
         fprintf(stderr, "FAIL: close test address\n");
-        return -1;
+        return false;
     }
 
     loop = iox_loop_new();
@@ -302,7 +306,7 @@ test_close_reaches_peer(void)
     probe.client = secure_link_open(loop, cfd, 0, &peer, psk, 1, &ccb);
     if (!server || !probe.client) {
         fprintf(stderr, "FAIL: close test secure_link_open\n");
-        return -1;
+        return false;
     }
 
     iox_timer_add(loop, 20, close_when_up, &probe);
@@ -320,13 +324,13 @@ test_close_reaches_peer(void)
 
     if (!probe.up) {
         fprintf(stderr, "FAIL: the link never came up\n");
-        return -1;
+        return false;
     }
     if (!probe.down) {
         fprintf(stderr, "FAIL: the server never heard the client close\n");
-        return -1;
+        return false;
     }
-    return 0;
+    return true;
 }
 
 int
@@ -366,7 +370,7 @@ main(void)
     sa.sin_family = AF_INET;
     sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     sa.sin_port = htons((uint16_t)sport);
-    if (nc_udp_from_sockaddr(&peer, (struct sockaddr *)&sa, sizeof(sa)) != 0) {
+    if (nc_udp_from_sockaddr(&peer, (struct sockaddr *)&sa, sizeof(sa)) != NC_UDP_OK) {
         fprintf(stderr, "FAIL: nc_udp_from_sockaddr\n");
         return 1;
     }
@@ -406,11 +410,11 @@ main(void)
     }
     printf("ok: encrypted echo round-trip (\"%s\")\n", MSG);
 
-    if (test_tick_keeps_running() != 0)
+    if (!test_tick_keeps_running())
         return 1;
     printf("ok: a silent peer gets the handshake repeated\n");
 
-    if (test_close_reaches_peer() != 0)
+    if (!test_close_reaches_peer())
         return 1;
     printf("ok: a close tells the peer instead of timing out\n");
     return 0;

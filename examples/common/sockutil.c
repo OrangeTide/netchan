@@ -19,7 +19,7 @@ set_nonblock(int fd)
     int fl = fcntl(fd, F_GETFL, 0);
 
     if (fl < 0)
-        return -1;
+        return SU_ERR;
     return fcntl(fd, F_SETFL, fl | O_NONBLOCK);
 }
 
@@ -37,7 +37,7 @@ su_udp_bind(const char *host, int port)
     snprintf(service, sizeof(service), "%d", port);
 
     if (getaddrinfo(host, service, &hints, &res) != 0)
-        return -1;
+        return SU_ERR;
 
     for (ai = res; ai; ai = ai->ai_next) {
         fd = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
@@ -66,7 +66,7 @@ su_resolve(const char *host, int port, struct nc_addr *out)
     snprintf(service, sizeof(service), "%d", port);
 
     if (getaddrinfo(host, service, &hints, &res) != 0)
-        return -1;
+        return SU_ERR;
     rc = nc_udp_from_sockaddr(out, res->ai_addr, res->ai_addrlen);
     freeaddrinfo(res);
     return rc;
@@ -79,10 +79,10 @@ su_local_port(int fd)
     socklen_t slen = sizeof(ss);
 
     if (getsockname(fd, (struct sockaddr *)&ss, &slen) != 0)
-        return -1;
+        return SU_ERR;
     if (ss.ss_family == AF_INET)
         return ntohs(((struct sockaddr_in *)&ss)->sin_port);
     if (ss.ss_family == AF_INET6)
         return ntohs(((struct sockaddr_in6 *)&ss)->sin6_port);
-    return -1;
+    return SU_ERR;
 }

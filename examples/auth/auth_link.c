@@ -124,7 +124,7 @@ chan_send(struct auth_link *al, uint8_t tag, const void *data, size_t len)
     int spins;
 
     if (!al->tx || len + 1 > sizeof(msg))
-        return -1;
+        return AUTH_LINK_ERR;
     msg[0] = tag;
     memcpy(msg + 1, data, len);
 
@@ -133,14 +133,14 @@ chan_send(struct auth_link *al, uint8_t tag, const void *data, size_t len)
 
         if (w == (int)(len + 1)) {
             flush_out(al);
-            return 0;
+            return AUTH_LINK_OK;
         }
         if (w != NETCHAN_ERR_FLOW && w != NETCHAN_ERR_AGAIN)
-            return -1;
+            return AUTH_LINK_ERR;
         netchan_service(al->conn, now_ms());
         flush_out(al);
     }
-    return -1;
+    return AUTH_LINK_ERR;
 }
 
 static void
@@ -460,11 +460,11 @@ int
 auth_link_send(struct auth_link *al, const void *data, size_t len)
 {
     if (!al->up)
-        return -1;
+        return AUTH_LINK_ERR;
     return chan_send(al, TAG_APP, data, len);
 }
 
-int
+bool
 auth_link_up(const struct auth_link *al)
 {
     return al->up;

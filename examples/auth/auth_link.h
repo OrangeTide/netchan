@@ -5,10 +5,14 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 #include "nc_addr.h"
 #include "nc_crypto.h"
 #include "nc_auth.h"
+
+#define AUTH_LINK_OK  (0)
+#define AUTH_LINK_ERR (-1)
 
 struct iox_loop;
 
@@ -92,12 +96,12 @@ void auth_link_supply_key(struct auth_link *al, const uint8_t *sk,
                           const uint8_t *pk);
 void auth_link_supply_password(struct auth_link *al, const char *password);
 
-/* Queue application bytes. Returns 0, or -1 if the link is not authenticated
- * yet or the send window stayed full. */
+/* Queue application bytes. Returns AUTH_LINK_OK, or AUTH_LINK_ERR if the link
+ * is not authenticated yet or the send window stayed full. */
 int auth_link_send(struct auth_link *al, const void *data, size_t len);
 
-/* Non-zero once authentication has succeeded and bytes may flow. */
-int auth_link_up(const struct auth_link *al);
+/* True once authentication has succeeded and bytes may flow. */
+bool auth_link_up(const struct auth_link *al);
 
 /* The authenticated peer name, or an empty string. */
 const char *auth_link_user(const struct auth_link *al);

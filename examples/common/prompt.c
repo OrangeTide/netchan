@@ -39,7 +39,7 @@ prompt_reader_feed(struct prompt_reader *pr, int fd)
     ssize_t r;
 
     if (!pr->active)
-        return -1;
+        return PROMPT_ERR;
 
     /*
      * One byte per call, straight from the descriptor. Reading in bulk or
