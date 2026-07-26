@@ -64,7 +64,7 @@ s_methods(void *ctx, const char *user)
     return NC_AUTH_M_PUBKEY;
 }
 
-static int
+static bool
 s_check_key(void *ctx, const char *user, const uint8_t pk[32])
 {
     (void)ctx;

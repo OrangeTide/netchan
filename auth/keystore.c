@@ -241,7 +241,7 @@ ks_host_key(const char *path, uint8_t sk[32])
     FILE *f = fopen(path, "r");
 
     if (f) {
-        int ok = fscanf(f, "%511s", hex) == 1 && ks_hex_decode(sk, 32, hex) == 0;
+        int ok = fscanf(f, "%511s", hex) == 1 && ks_hex_decode(sk, 32, hex) == KS_OK;
 
         fclose(f);
         return ok ? 0 : -1;
@@ -262,15 +262,15 @@ ks_host_key(const char *path, uint8_t sk[32])
  * authorized_keys and passwd
  ****************************************************************/
 
-int
+bool
 ks_authorized_key(const char *path, const char *user, const uint8_t pk[32])
 {
     char line[KS_LINE], name[KS_LINE], hex[KS_LINE];
     FILE *f = fopen(path, "r");
-    int found = 0;
+    bool found = false;
 
     if (!f)
-        return 0;
+        return false;
 
     while (fgets(line, sizeof(line), f)) {
         uint8_t on_file[32];
@@ -282,7 +282,7 @@ ks_authorized_key(const char *path, const char *user, const uint8_t pk[32])
         if (ks_hex_decode(on_file, 32, hex) != 0)
             continue;
         if (crypto_verify32(on_file, pk) == 0) {
-            found = 1;
+            found = true;
             break;
         }
     }
@@ -290,20 +290,20 @@ ks_authorized_key(const char *path, const char *user, const uint8_t pk[32])
     return found;
 }
 
-int
+bool
 ks_user_exists(const char *path, const char *user)
 {
     char line[KS_LINE], name[KS_LINE];
     FILE *f = fopen(path, "r");
-    int found = 0;
+    bool found = false;
 
     if (!f)
-        return 0;
+        return false;
     while (fgets(line, sizeof(line), f)) {
         if (line[0] == '#' || sscanf(line, "%511s", name) != 1)
             continue;
         if (strcmp(name, user) == 0) {
-            found = 1;
+            found = true;
             break;
         }
     }
@@ -311,13 +311,13 @@ ks_user_exists(const char *path, const char *user)
     return found;
 }
 
-int
+bool
 ks_check_password(const char *path, const char *user, const char *password)
 {
     char line[KS_LINE], name[KS_LINE], salt_hex[KS_LINE], hash_hex[KS_LINE];
     uint8_t salt[KS_SALT_LEN], want[32], got[32];
     FILE *f = fopen(path, "r");
-    int have_entry = 0, ok = 0;
+    bool have_entry = false, ok = false;
 
     memset(salt, 0, sizeof(salt));
     memset(want, 0, sizeof(want));
@@ -332,7 +332,7 @@ ks_check_password(const char *path, const char *user, const char *password)
             if (ks_hex_decode(salt, sizeof(salt), salt_hex) != 0 ||
                 ks_hex_decode(want, sizeof(want), hash_hex) != 0)
                 continue;
-            have_entry = 1;
+            have_entry = true;
             break;
         }
         fclose(f);
@@ -474,7 +474,7 @@ keyfile_scan(const char *path, char *kdf, size_t kdf_cap,
     return (have_pk && have_sk) ? 0 : -1;
 }
 
-int
+bool
 ks_keyfile_encrypted(const char *path)
 {
     char kdf[KS_LINE], sk_hex[KS_LINE], salt_hex[KS_LINE];
@@ -482,7 +482,7 @@ ks_keyfile_encrypted(const char *path)
 
     if (keyfile_scan(path, kdf, sizeof(kdf), sk_hex, sizeof(sk_hex),
                      salt_hex, sizeof(salt_hex), pk) != 0)
-        return 0;
+        return false;
     return strcmp(kdf, "argon2id") == 0;
 }
 

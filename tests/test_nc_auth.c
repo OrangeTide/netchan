@@ -109,14 +109,14 @@ s_methods(void *ctx, const char *user)
     return NC_AUTH_M_PUBKEY | NC_AUTH_M_PASSWORD;
 }
 
-static int
+static bool
 s_check_key(void *ctx, const char *user, const uint8_t pk[32])
 {
     (void)ctx;
     return strcmp(user, "alice") == 0 && crypto_verify32(pk, good_pk) == 0;
 }
 
-static int
+static bool
 s_check_password(void *ctx, const char *user, const char *password)
 {
     (void)ctx;

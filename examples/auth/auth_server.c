@@ -37,7 +37,7 @@ srv_methods(void *ctx, const char *user)
     return NC_AUTH_M_PUBKEY | NC_AUTH_M_PASSWORD;
 }
 
-static int
+static bool
 srv_check_key(void *ctx, const char *user, const uint8_t pk[32])
 {
     struct server *s = ctx;
@@ -45,7 +45,7 @@ srv_check_key(void *ctx, const char *user, const uint8_t pk[32])
     return ks_authorized_key(s->authkeys, user, pk);
 }
 
-static int
+static bool
 srv_check_password(void *ctx, const char *user, const char *password)
 {
     struct server *s = ctx;

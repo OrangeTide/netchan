@@ -139,7 +139,7 @@ post_listen(struct mc_ipx *x, int i)
  * Public API
  ****************************************************************/
 
-int
+bool
 mc_ipx_available(void)
 {
     union REGS r;
@@ -147,9 +147,9 @@ mc_ipx_available(void)
     r.w.ax = 0x7A00;
     int86x(0x2F, &r, &r, &s);
     if (r.h.al != 0xFF)
-        return 0;
+        return false;
     mc_ipx_entry = (void (__far *)(void))MK_FP(s.es, r.w.di);
-    return 1;
+    return true;
 }
 
 int

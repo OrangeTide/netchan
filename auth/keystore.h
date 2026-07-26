@@ -5,6 +5,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 #define KS_OK  (0)
 #define KS_ERR (-1)
@@ -61,19 +62,19 @@ int ks_known_host_add(const char *path, const char *host, const uint8_t pk[32]);
  * mode 0600 if the file does not exist. Returns 0 on success. */
 int ks_host_key(const char *path, uint8_t sk[32]);
 
-/* Non-zero if pk appears on a line for user. */
-int ks_authorized_key(const char *path, const char *user, const uint8_t pk[32]);
+/* True if pk appears on a line for user. */
+bool ks_authorized_key(const char *path, const char *user, const uint8_t pk[32]);
 
-/* Non-zero if password matches the stored Argon2id hash for user. Always
+/* True if password matches the stored Argon2id hash for user. Always
  * spends the same work for an unknown user as for a known one, so timing
  * does not reveal which names exist. */
-int ks_check_password(const char *path, const char *user, const char *password);
+bool ks_check_password(const char *path, const char *user, const char *password);
 
 /* Append user with an Argon2id hash of password. Returns 0 on success. */
 int ks_passwd_add(const char *path, const char *user, const char *password);
 
-/* Non-zero if the file has any line for user. */
-int ks_user_exists(const char *path, const char *user);
+/* True if the file has any line for user. */
+bool ks_user_exists(const char *path, const char *user);
 
 /****************************************************************
  * Client identity key file, optionally encrypted under a passphrase
@@ -94,7 +95,7 @@ int ks_keyfile_generate(const char *path, const char *passphrase,
 int ks_keyfile_load(const char *path, const char *passphrase,
                     uint8_t sk[64], uint8_t pk[32]);
 
-/* Non-zero if the key file at path is passphrase-protected. */
-int ks_keyfile_encrypted(const char *path);
+/* True if the key file at path is passphrase-protected. */
+bool ks_keyfile_encrypted(const char *path);
 
 #endif /* KS_KEYSTORE_H */

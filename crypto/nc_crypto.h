@@ -5,6 +5,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 /*
  * The status calls use this pair. nc_crypto_seal and nc_crypto_open return a
@@ -142,12 +143,12 @@ void nc_crypto_identity_public(uint8_t out[32], const uint8_t static_sk[32]);
 size_t nc_crypto_handshake_packet(const struct nc_crypto *c,
                                   uint8_t *out, size_t cap);
 
-/* Non-zero once the session keys are derived and DATA can flow. */
-int nc_crypto_ready(const struct nc_crypto *c);
+/* True once the session keys are derived and DATA can flow. */
+bool nc_crypto_ready(const struct nc_crypto *c);
 
-/* Non-zero if verify_peer refused this peer, or a required identity key was
+/* True if verify_peer refused this peer, or a required identity key was
  * missing. The session is dead and will never become ready. */
-int nc_crypto_failed(const struct nc_crypto *c);
+bool nc_crypto_failed(const struct nc_crypto *c);
 
 /*
  * A 32-byte value derived from the same handshake transcript as the session

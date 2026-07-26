@@ -264,13 +264,13 @@ nc_crypto_handshake_packet(const struct nc_crypto *c, uint8_t *out, size_t cap)
     return NC_CRYPTO_HELLO_LEN;
 }
 
-int
+bool
 nc_crypto_ready(const struct nc_crypto *c)
 {
     return c->have_key;
 }
 
-int
+bool
 nc_crypto_failed(const struct nc_crypto *c)
 {
     return c->failed;

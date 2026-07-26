@@ -5,6 +5,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 /*
  * nc_crypto authenticates the *server* to the client, because the client
@@ -104,11 +105,11 @@ struct nc_auth_server_cb {
      * handshake into a way to enumerate accounts.
      */
     unsigned (*methods)(void *ctx, const char *user);
-    /* Non-zero if pk is an authorised key for user. The signature over it
+    /* True if pk is an authorised key for user. The signature over it
      * has already been checked by the time this is called. */
-    int (*check_key)(void *ctx, const char *user, const uint8_t pk[32]);
-    /* Non-zero if the password is correct for user. */
-    int (*check_password)(void *ctx, const char *user, const char *password);
+    bool (*check_key)(void *ctx, const char *user, const uint8_t pk[32]);
+    /* True if the password is correct for user. */
+    bool (*check_password)(void *ctx, const char *user, const char *password);
     void *ctx;
 };
 

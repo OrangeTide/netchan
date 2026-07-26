@@ -5,6 +5,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include "mc_addr.h"
 #include "microchan.h"        /* for MC_MTU */
 
@@ -37,21 +38,22 @@ struct mc_ipx {
     uint16_t next_recv;     /* round-robin poll cursor                     */
 };
 
-/** Probe for the IPX driver. Returns 1 if present, 0 otherwise. */
-int mc_ipx_available(void);
+/** Probe for the IPX driver. True if present. */
+bool mc_ipx_available(void);
 
-/** Open the socket and post the listen pool. Returns 0 on success, -1 on
- *  failure (no driver, out of memory, or socket open error). */
+/** Open the socket and post the listen pool. Returns MC_IPX_OK, or MC_IPX_ERR
+ *  on failure (no driver, out of memory, or socket open error). */
 int mc_ipx_open(struct mc_ipx *x, unsigned socket);
 
 void mc_ipx_close(struct mc_ipx *x);
 
-/** Poll for one received datagram. Returns length, 0 if none, -1 on error.
- *  The IPX payload (after the 30-byte header) is copied into buf. */
+/** Poll for one received datagram. Returns length, 0 if none, MC_IPX_ERR on
+ *  error. The IPX payload (after the 30-byte header) is copied into buf. */
 int mc_ipx_recv(struct mc_ipx *x, void *buf, size_t buflen,
                 struct mc_addr *from);
 
-/** Send one datagram to an IPX address. Returns bytes sent, or -1/0. */
+/** Send one datagram to an IPX address. Returns bytes sent, 0 if every send
+ *  ECB is busy, or MC_IPX_ERR. */
 int mc_ipx_send(struct mc_ipx *x, const void *buf, size_t len,
                 const struct mc_addr *to);
 
