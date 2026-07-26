@@ -16,6 +16,7 @@
 #   make                 build everything for the host
 #   make run-tests       run the test targets
 #   make lint            check the tree against docs/coding-style.md
+#   make analyze         build under gcc -fanalyzer and fail on a warning
 #   make NETCHAN_EXAMPLES=0   library and tests only
 
 ROOT := $(dir $(lastword $(MAKEFILE_LIST)))
@@ -50,3 +51,9 @@ SUBDIRS += microchan
 .PHONY : lint
 lint :
 	@sh $(NETCHAN_TOP)tools/lint.sh
+
+# The analyzer needs its own flags and a clean tree, so it drives make itself
+# rather than hooking into this one. Slow, and gcc only.
+.PHONY : analyze
+analyze :
+	@sh $(NETCHAN_TOP)tools/analyze.sh

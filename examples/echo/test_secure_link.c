@@ -150,6 +150,8 @@ test_tick_keeps_running(void)
     sfd = udp_ephemeral(&sport);
     cfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sfd < 0 || cfd < 0) {
+        if (sfd >= 0) close(sfd);
+        if (cfd >= 0) close(cfd);
         fprintf(stderr, "FAIL: tick test sockets\n");
         return false;
     }
@@ -275,6 +277,8 @@ test_close_reaches_peer(void)
     sfd = udp_ephemeral(&sport);
     cfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sfd < 0 || cfd < 0) {
+        if (sfd >= 0) close(sfd);
+        if (cfd >= 0) close(cfd);
         fprintf(stderr, "FAIL: close test sockets\n");
         return false;
     }

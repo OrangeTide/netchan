@@ -80,6 +80,8 @@ bind_lo(struct sockaddr_in *out)
     struct sockaddr_in a;
     socklen_t sl = sizeof(a);
 
+    if (fd < 0)
+        return fd;
     memset(&a, 0, sizeof(a));
     a.sin_family = AF_INET;
     a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
