@@ -15,6 +15,7 @@
 #
 #   make                 build everything for the host
 #   make run-tests       run the test targets
+#   make lint            check the tree against docs/coding-style.md
 #   make NETCHAN_EXAMPLES=0   library and tests only
 
 ROOT := $(dir $(lastword $(MAKEFILE_LIST)))
@@ -24,6 +25,10 @@ ROOT := $(dir $(lastword $(MAKEFILE_LIST)))
 # without either one linking the other. This is the whole reason for a
 # project-wide variable; everything else propagates through _LIBS.
 NETCHAN_SRC_INC := -I$(ROOT)src
+
+# Every subdirectory's module.mk rebinds ROOT as it is included, so a recipe
+# expanded later would see whichever one came last. Capture the top now.
+NETCHAN_TOP := $(ROOT)
 
 # idl comes before tests and examples because it exports NETCHAN_IDL_INC and
 # MICROSER_GEN, which their codegen rules read at include time.
@@ -37,3 +42,11 @@ endif
 # microchan is a second, incompatible library that shares this repository but
 # not a line of code. See microchan/README.md.
 SUBDIRS += microchan
+
+# Style checking is not a build step: it compiles nothing and produces no
+# output file, so it stays a plain phony rule rather than a modular-make
+# target. It reads the tree through git ls-files, so it needs no file list
+# here that could drift from the one the build uses.
+.PHONY : lint
+lint :
+	@sh $(NETCHAN_TOP)tools/lint.sh

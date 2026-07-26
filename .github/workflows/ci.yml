@@ -20,6 +20,24 @@ env:
   OW_RELEASE: 2026-07-13-Build
 
 jobs:
+  # Cheap and independent of every toolchain, so it runs first and tells you
+  # the convention drifted rather than leaving it to a reviewer to notice.
+  lint:
+    name: coding style
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      # shellcheck is preinstalled on the ubuntu runners, but the linter is
+      # written to skip that check rather than fail when it is absent, so a
+      # missing tool would pass quietly. Prove it is here.
+      - name: Check shellcheck is available
+        run: shellcheck --version
+
+      - name: Lint
+        run: make lint
+
   build:
     name: ${{ matrix.os }} / ${{ matrix.cc }}
     runs-on: ${{ matrix.os }}

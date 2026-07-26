@@ -60,9 +60,8 @@ exit
 EOF
 }
 
-# Launch directly in this shell (backgrounding inside $(...) would detach
-# the child so `wait` could not track it).
-DB="SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy timeout -k2 $TMO dosbox -noconsole -conf"
+# Each dosbox below is launched directly in this shell. Backgrounding inside
+# $(...) would detach the child, so `wait` could not track it.
 
 case "${1:-}" in
 single)
