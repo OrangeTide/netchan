@@ -19,7 +19,7 @@
  * nothing: it skips what it does not recognise.
  *
  * Every function takes an explicit buffer and length and returns the new
- * position, or -1 when the buffer is too small.  Nothing here allocates,
+ * position, or MS_ERR when the buffer is too small.  Nothing here allocates,
  * and a decoded bytes or string field points into the caller's buffer
  * rather than a copy of it, so it stays valid only as long as that buffer.
  */
@@ -30,6 +30,12 @@
 #include <stdint.h>
 #include <string.h>
 
+/*
+ * No MS_OK: every call returns a buffer position, and 0 is a valid one. The
+ * failure value is the only one that needs a name.
+ */
+#define MS_ERR (-1)
+
 #define MS_WIRE_8     0
 #define MS_WIRE_16    1
 #define MS_WIRE_32    2
@@ -37,14 +43,14 @@
 #define MS_WIRE_BYTES 4
 
 /****************************************************************
- * Writing: each returns the new position, or -1 if it would overrun
+ * Writing: each returns the new position, or MS_ERR if it would overrun
  ****************************************************************/
 
 static inline int
 ms_write_tag_u8(uint8_t *buf, int pos, int len, uint8_t field, uint8_t val)
 {
     if (pos + 2 > len)
-        return -1;
+        return MS_ERR;
     buf[pos] = (uint8_t)((field << 3) | MS_WIRE_8);
     buf[pos + 1] = val;
     return pos + 2;
@@ -60,7 +66,7 @@ static inline int
 ms_write_tag_u16(uint8_t *buf, int pos, int len, uint8_t field, uint16_t val)
 {
     if (pos + 3 > len)
-        return -1;
+        return MS_ERR;
     buf[pos] = (uint8_t)((field << 3) | MS_WIRE_16);
     buf[pos + 1] = (uint8_t)(val & 0xff);
     buf[pos + 2] = (uint8_t)((val >> 8) & 0xff);
@@ -77,7 +83,7 @@ static inline int
 ms_write_tag_u32(uint8_t *buf, int pos, int len, uint8_t field, uint32_t val)
 {
     if (pos + 5 > len)
-        return -1;
+        return MS_ERR;
     buf[pos] = (uint8_t)((field << 3) | MS_WIRE_32);
     buf[pos + 1] = (uint8_t)(val & 0xff);
     buf[pos + 2] = (uint8_t)((val >> 8) & 0xff);
@@ -98,7 +104,7 @@ ms_write_tag_u64(uint8_t *buf, int pos, int len, uint8_t field, uint64_t val)
     int i;
 
     if (pos + 9 > len)
-        return -1;
+        return MS_ERR;
     buf[pos] = (uint8_t)((field << 3) | MS_WIRE_64);
     for (i = 0; i < 8; i++)
         buf[pos + 1 + i] = (uint8_t)((val >> (i * 8)) & 0xff);
@@ -117,7 +123,7 @@ ms_write_tag_bytes(uint8_t *buf, int pos, int len, uint8_t field,
                    const void *data, uint16_t dlen)
 {
     if (pos + 3 + dlen > len)
-        return -1;
+        return MS_ERR;
     buf[pos] = (uint8_t)((field << 3) | MS_WIRE_BYTES);
     buf[pos + 1] = (uint8_t)(dlen & 0xff);
     buf[pos + 2] = (uint8_t)((dlen >> 8) & 0xff);
@@ -127,14 +133,14 @@ ms_write_tag_bytes(uint8_t *buf, int pos, int len, uint8_t field,
 }
 
 /****************************************************************
- * Reading: each returns the new position, or -1 if it would run past end
+ * Reading: each returns the new position, or MS_ERR if it would run past end
  ****************************************************************/
 
 static inline int
 ms_read_u8(const uint8_t *buf, int pos, int end, uint8_t *val)
 {
     if (pos + 1 > end)
-        return -1;
+        return MS_ERR;
     *val = buf[pos];
     return pos + 1;
 }
@@ -155,7 +161,7 @@ static inline int
 ms_read_u16(const uint8_t *buf, int pos, int end, uint16_t *val)
 {
     if (pos + 2 > end)
-        return -1;
+        return MS_ERR;
     *val = (uint16_t)((uint16_t)buf[pos] | ((uint16_t)buf[pos + 1] << 8));
     return pos + 2;
 }
@@ -176,7 +182,7 @@ static inline int
 ms_read_u32(const uint8_t *buf, int pos, int end, uint32_t *val)
 {
     if (pos + 4 > end)
-        return -1;
+        return MS_ERR;
     *val = (uint32_t)buf[pos]
          | ((uint32_t)buf[pos + 1] << 8)
          | ((uint32_t)buf[pos + 2] << 16)
@@ -203,7 +209,7 @@ ms_read_u64(const uint8_t *buf, int pos, int end, uint64_t *val)
     int i;
 
     if (pos + 8 > end)
-        return -1;
+        return MS_ERR;
     for (i = 0; i < 8; i++)
         v |= (uint64_t)buf[pos + i] << (i * 8);
     *val = v;
@@ -234,11 +240,11 @@ ms_read_bytes(const uint8_t *buf, int pos, int end,
     uint16_t dlen;
 
     if (pos + 2 > end)
-        return -1;
+        return MS_ERR;
     dlen = (uint16_t)((uint16_t)buf[pos] | ((uint16_t)buf[pos + 1] << 8));
     pos += 2;
     if (pos + dlen > end || dlen > dmax)
-        return -1;
+        return MS_ERR;
     *data = buf + pos;
     *out_len = dlen;
     return pos + dlen;
@@ -261,12 +267,12 @@ ms_skip(const uint8_t *buf, int pos, int end, uint8_t wire)
     }
     if (wire == MS_WIRE_BYTES) {
         if (pos + 2 > end)
-            return -1;
+            return MS_ERR;
         blen = (uint16_t)((uint16_t)buf[pos] | ((uint16_t)buf[pos + 1] << 8));
         pos += 2 + blen;
         return pos <= end ? pos : -1;
     }
-    return -1;
+    return MS_ERR;
 }
 
 #endif /* MICROSER_H */

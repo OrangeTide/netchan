@@ -344,13 +344,13 @@ END {
                 printf "    pos = ms_write_tag_%s(buf, pos, len, %d, msg->%s);\n", \
                     rw_suffix(rf_type[i, j]), rf_tag[i, j], rf_name[i, j] > c
             }
-            printf "    if (pos < 0) return -1;\n" > c
+            printf "    if (pos < 0) return MS_ERR;\n" > c
         }
 
         if (mcase[i]) {
             printf "    pos = ms_write_tag_%s(buf, pos, len, %d, msg->%s);\n", \
                 rw_suffix(mdt[i]), mdtag[i], mdn[i] > c
-            printf "    if (pos < 0) return -1;\n" > c
+            printf "    if (pos < 0) return MS_ERR;\n" > c
             printf "    switch (msg->%s) {\n", mdn[i] > c
             for (vi = 1; vi <= mnv[i]; vi++) {
                 printf "    case %d: /* %s */\n", vv[i, vi], vlabel[i, vi] > c
@@ -362,7 +362,7 @@ END {
                         printf "        pos = ms_write_tag_%s(buf, pos, len, %d, msg->%s);\n", \
                             rw_suffix(vf_type[i, vi, vfi]), vf_tag[i, vi, vfi], vf_name[i, vi, vfi] > c
                     }
-                    printf "        if (pos < 0) return -1;\n" > c
+                    printf "        if (pos < 0) return MS_ERR;\n" > c
                 }
                 printf "        break;\n" > c
             }
@@ -376,9 +376,9 @@ END {
         # decode
         printf "int %s_decode(struct %s *msg, const uint8_t *buf, int len)\n", sn, sn > c
         printf "{\n    int end, pos = 2;\n\n" > c
-        printf "    if (len < 2) return -1;\n" > c
+        printf "    if (len < 2) return MS_ERR;\n" > c
         printf "    end = (int)((uint16_t)buf[0] | ((uint16_t)buf[1] << 8)) + 2;\n" > c
-        printf "    if (end > len) return -1;\n" > c
+        printf "    if (end > len) return MS_ERR;\n" > c
         printf "    memset(msg, 0, sizeof(*msg));\n\n" > c
         printf "    while (pos < end) {\n" > c
         printf "        uint8_t tag = buf[pos++];\n" > c
@@ -407,7 +407,7 @@ END {
         printf "            pos = ms_skip(buf, pos, end, tag & 7);\n" > c
         printf "            break;\n" > c
         printf "        }\n" > c
-        printf "        if (pos < 0) return -1;\n" > c
+        printf "        if (pos < 0) return MS_ERR;\n" > c
         printf "    }\n" > c
         printf "    return end;\n}\n\n" > c
     }
@@ -420,21 +420,21 @@ END {
             msn = to_snake(dm_msg[i, k])
             printf "int %s_encode_%s(uint8_t *buf, int len, const struct %s *msg)\n", dsn, msn, msn > c
             printf "{\n    int n;\n\n" > c
-            printf "    if (len < 1) return -1;\n" > c
+            printf "    if (len < 1) return MS_ERR;\n" > c
             printf "    buf[0] = %s_%s;\n", dun, toupper(msn) > c
             printf "    n = %s_encode(msg, buf + 1, len - 1);\n", msn > c
-            printf "    if (n < 0) return -1;\n" > c
+            printf "    if (n < 0) return MS_ERR;\n" > c
             printf "    return n + 1;\n}\n\n" > c
         }
 
         # the tag alone, for a caller that decodes into its own struct
         printf "int %s_msg_type(const uint8_t *buf, int len)\n", dsn > c
-        printf "{\n    if (len < 1) return -1;\n    return buf[0];\n}\n\n" > c
+        printf "{\n    if (len < 1) return MS_ERR;\n    return buf[0];\n}\n\n" > c
 
         # decode: read the tag, fill the union, or skip an unknown message
         printf "int %s_decode(const uint8_t *buf, int len, struct %s_msg *out)\n", dsn, dsn > c
         printf "{\n    int n;\n\n" > c
-        printf "    if (len < 1) return -1;\n" > c
+        printf "    if (len < 1) return MS_ERR;\n" > c
         printf "    out->type = buf[0];\n" > c
         printf "    switch (buf[0]) {\n" > c
         for (k = 1; k <= ndm[i]; k++) {
@@ -448,12 +448,12 @@ END {
         printf "         * prefix, so step over it the way microser steps over\n" > c
         printf "         * an unknown field. */\n" > c
         printf "        out->type = %s_NONE;\n", dun > c
-        printf "        if (len < 3) return -1;\n" > c
+        printf "        if (len < 3) return MS_ERR;\n" > c
         printf "        n = (int)((uint16_t)buf[1] | ((uint16_t)buf[2] << 8)) + 2;\n" > c
-        printf "        if (n + 1 > len) return -1;\n" > c
+        printf "        if (n + 1 > len) return MS_ERR;\n" > c
         printf "        break;\n" > c
         printf "    }\n" > c
-        printf "    if (n < 0) return -1;\n" > c
+        printf "    if (n < 0) return MS_ERR;\n" > c
         printf "    return n + 1;\n}\n\n" > c
     }
 
