@@ -34,7 +34,8 @@
  ****************************************************************/
 
 void ks_hex_encode(char *out, const uint8_t *in, size_t n);   /* out: 2n+1 */
-int  ks_hex_decode(uint8_t *out, size_t n, const char *in);   /* 0 on success */
+/** Returns KS_OK on success. */
+int  ks_hex_decode(uint8_t *out, size_t n, const char *in);
 
 /****************************************************************
  * Client: known_hosts, the trust-on-first-use store
@@ -46,41 +47,41 @@ enum {
     KS_HOST_CHANGED = 2,    /* entry present and different: refuse loudly */
 };
 
-/* Look up host. On KS_HOST_CHANGED, stored (if non-NULL) receives the key
+/** Look up host. On KS_HOST_CHANGED, stored (if non-NULL) receives the key
  * that was on file, for the warning message. */
 int ks_known_host(const char *path, const char *host,
                   const uint8_t pk[32], uint8_t stored[32]);
 
-/* Append host -> pk. Returns 0 on success. */
+/** Append host -> pk. Returns KS_OK on success. */
 int ks_known_host_add(const char *path, const char *host, const uint8_t pk[32]);
 
 /****************************************************************
  * Server: identity key, authorised keys, passwords
  ****************************************************************/
 
-/* Read a 32-byte X25519 secret from path, generating and saving one with
- * mode 0600 if the file does not exist. Returns 0 on success. */
+/** Read a 32-byte X25519 secret from path, generating and saving one with
+ * mode 0600 if the file does not exist. Returns KS_OK on success. */
 int ks_host_key(const char *path, uint8_t sk[32]);
 
-/* True if pk appears on a line for user. */
+/** True if pk appears on a line for user. */
 bool ks_authorized_key(const char *path, const char *user, const uint8_t pk[32]);
 
-/* True if password matches the stored Argon2id hash for user. Always
+/** True if password matches the stored Argon2id hash for user. Always
  * spends the same work for an unknown user as for a known one, so timing
  * does not reveal which names exist. */
 bool ks_check_password(const char *path, const char *user, const char *password);
 
-/* Append user with an Argon2id hash of password. Returns 0 on success. */
+/** Append user with an Argon2id hash of password. Returns KS_OK. */
 int ks_passwd_add(const char *path, const char *user, const char *password);
 
-/* True if the file has any line for user. */
+/** True if the file has any line for user. */
 bool ks_user_exists(const char *path, const char *user);
 
 /****************************************************************
  * Client identity key file, optionally encrypted under a passphrase
  ****************************************************************/
 
-/*
+/**
  * Generate an Ed25519 key pair and write it to path with mode 0600. If
  * passphrase is non-NULL and non-empty, the 64-byte secret is sealed with
  * XChaCha20-Poly1305 under a key stretched from the passphrase by Argon2id,
@@ -90,12 +91,12 @@ bool ks_user_exists(const char *path, const char *user);
 int ks_keyfile_generate(const char *path, const char *passphrase,
                         uint8_t pk_out[32]);
 
-/* Load a key file. Returns 0 on success, -1 if the file is unreadable or
+/** Load a key file. Returns KS_OK, or KS_ERR if the file is unreadable or
  * malformed, -2 if the passphrase is wrong. */
 int ks_keyfile_load(const char *path, const char *passphrase,
                     uint8_t sk[64], uint8_t pk[32]);
 
-/* True if the key file at path is passphrase-protected. */
+/** True if the key file at path is passphrase-protected. */
 bool ks_keyfile_encrypted(const char *path);
 
 #endif /* KS_KEYSTORE_H */

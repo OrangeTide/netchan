@@ -96,5 +96,5 @@ prompt_hidden(const char *prompt, char *buf, size_t cap)
     else
         buf[0] = '\0';
     prompt_reader_end(&pr);
-    return r > 0 ? 0 : -1;
+    return r > 0 ? PROMPT_OK : PROMPT_ERR;
 }

@@ -30,12 +30,12 @@
  * transport-agnostic core: sockaddr appears here and nowhere else.
  */
 
-/* Pack a sockaddr (AF_INET / AF_INET6) into nc_addr. Returns 0 on success,
- * -1 for an unsupported family (a is cleared to len 0). */
+/** Pack a sockaddr (AF_INET / AF_INET6) into nc_addr. Returns NC_UDP_OK, or
+ * NC_UDP_ERR for an unsupported family (a is cleared to len 0). */
 int nc_udp_from_sockaddr(struct nc_addr *a,
                          const struct sockaddr *sa, socklen_t salen);
 
-/* Unpack nc_addr into a sockaddr_storage. Returns the sockaddr length on
+/** Unpack nc_addr into a sockaddr_storage. Returns the sockaddr length on
  * success, 0 if the address is unset or malformed. */
 socklen_t nc_udp_to_sockaddr(const struct nc_addr *a,
                              struct sockaddr_storage *ss);

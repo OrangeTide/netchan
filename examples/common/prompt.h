@@ -7,16 +7,18 @@
 #include <termios.h>
 
 /*
- * No PROMPT_OK: prompt_reader_feed is tri-state, returning 1 for a complete
- * line, 0 when more input is needed, and PROMPT_ERR on EOF or error.
+ * prompt_hidden uses the pair. prompt_reader_feed does not: it is tri-state,
+ * returning 1 for a complete line, 0 when more input is needed, and
+ * PROMPT_ERR on EOF or error, so 0 there does not mean success.
  */
+#define PROMPT_OK  (0)
 #define PROMPT_ERR (-1)
 
 #define PROMPT_MAX 256
 
 /*
  * Write prompt to the terminal, read one line into buf with echo disabled,
- * and strip the newline. Returns 0 on success, -1 on EOF or error.
+ * and strip the newline. Returns PROMPT_OK, or PROMPT_ERR on EOF or error.
  *
  * This one blocks, which is correct for a tool that has nothing else to do
  * while it waits. Programs driven by an event loop want prompt_reader below.

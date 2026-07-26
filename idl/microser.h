@@ -117,7 +117,7 @@ ms_write_tag_i64(uint8_t *buf, int pos, int len, uint8_t field, int64_t val)
     return ms_write_tag_u64(buf, pos, len, field, (uint64_t)val);
 }
 
-/* Write a length-prefixed field: tag byte, uint16le length, then the data. */
+/** Write a length-prefixed field: tag byte, uint16le length, then the data. */
 static inline int
 ms_write_tag_bytes(uint8_t *buf, int pos, int len, uint8_t field,
                    const void *data, uint16_t dlen)
@@ -228,7 +228,7 @@ ms_read_i64(const uint8_t *buf, int pos, int end, int64_t *val)
     return ret;
 }
 
-/*
+/**
  * Read a length-prefixed field.  The data pointer is into buf rather than a
  * copy, so it lives exactly as long as buf does.  Fails if the field runs
  * past end or is longer than dmax.
@@ -250,7 +250,7 @@ ms_read_bytes(const uint8_t *buf, int pos, int end,
     return pos + dlen;
 }
 
-/*
+/**
  * Step over a field this reader does not know about.  This is what makes a
  * message forward compatible: the wire type in the tag says how big the
  * value is even when the field number means nothing here.

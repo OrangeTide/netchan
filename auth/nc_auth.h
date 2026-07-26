@@ -74,7 +74,7 @@
 #define NC_AUTH_OK  (0)
 #define NC_AUTH_ERR (-1)
 
-/*
+/**
  * Conversation state, as reported by nc_auth_state. These are states, not
  * return codes: NC_AUTH_STATE_OK is 1 and says the client is authenticated,
  * while NC_AUTH_OK is 0 and says a call succeeded.
@@ -85,14 +85,14 @@ enum {
     NC_AUTH_STATE_DENIED,         /* no method left, or too many attempts */
 };
 
-/* What the client conversation is waiting for. See nc_auth_needs. */
+/** What the client conversation is waiting for. See nc_auth_needs. */
 enum {
     NC_AUTH_NEED_NOTHING = 0,
     NC_AUTH_NEED_KEY,       /* an Ed25519 key pair, or NULL to skip */
     NC_AUTH_NEED_PASSWORD,  /* a password, or NULL to skip */
 };
 
-/* Hand a complete auth message to the transport. */
+/** Hand a complete auth message to the transport. */
 typedef void (*nc_auth_send_cb)(void *ctx, const void *msg, size_t len);
 
 struct nc_auth_server_cb {
@@ -135,14 +135,14 @@ void nc_auth_server_init(struct nc_auth *a, const uint8_t sid[32],
                          const struct nc_auth_server_cb *cb,
                          nc_auth_send_cb send, void *send_ctx);
 
-/* Client only: emit the opening HELLO. Harmless on the server. */
+/** Client only: emit the opening HELLO. Harmless on the server. */
 void nc_auth_start(struct nc_auth *a);
 
-/* Feed one complete message. Returns NC_AUTH_OK, or NC_AUTH_ERR if the peer
+/** Feed one complete message. Returns NC_AUTH_OK, or NC_AUTH_ERR if the peer
  * malformed or out of order, which also ends the conversation as denied. */
 int nc_auth_feed(struct nc_auth *a, const void *msg, size_t len);
 
-/*
+/**
  * What the conversation is waiting for, or NC_AUTH_NEED_NOTHING. Check this
  * after every nc_auth_feed. While it is non-zero the client has sent nothing
  * and is waiting; nothing times out inside nc_auth, so the application may
@@ -150,7 +150,7 @@ int nc_auth_feed(struct nc_auth *a, const void *msg, size_t len);
  */
 int nc_auth_needs(const struct nc_auth *a);
 
-/*
+/**
  * Resume a suspended conversation. Pass NULL to say the credential is not
  * available, which drops that method and moves on to the next one. Calling
  * either function when nc_auth_needs() does not match is a no-op.
@@ -164,11 +164,11 @@ void nc_auth_supply_password(struct nc_auth *a, const char *password);
 
 int nc_auth_state(const struct nc_auth *a);
 
-/* The authenticated name. Only meaningful once the state is
+/** The authenticated name. Only meaningful once the state is
  * NC_AUTH_STATE_OK. */
 const char *nc_auth_user(const struct nc_auth *a);
 
-/*
+/**
  * The digest a client signs and a server checks:
  *   BLAKE2b-256("netchan-auth-v1" || sid || ulen || user || pk)
  * Exposed so a key-management tool can produce the same bytes.

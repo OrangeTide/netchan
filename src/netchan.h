@@ -128,7 +128,7 @@ void netchan_cfg_default(struct netchan_cfg *cfg);
 
 struct netchan_conn *netchan_open(int server);
 
-/* Queue a DISCONNECT for the peer and enter CLOSING, without freeing.  Run one
+/** Queue a DISCONNECT for the peer and enter CLOSING, without freeing.  Run one
  * netchan_send_next cycle afterward to transmit it, then netchan_close to free.
  * A graceful shutdown that saves the peer an idle timeout.
  *
@@ -166,7 +166,8 @@ int netchan_feed(struct netchan_conn *c, const void *pkt, size_t len,
 size_t netchan_send_next(struct netchan_conn *c, void *buf, size_t buflen,
                          struct nc_addr *to);
 
-/** Service timers. Returns ms until next needed call, or -1 if idle. */
+/** Service timers. Returns ms until the next needed call, or NETCHAN_ERR
+ *  when idle. */
 int netchan_service(struct netchan_conn *c, uint32_t now_ms);
 
 /****************************************************************

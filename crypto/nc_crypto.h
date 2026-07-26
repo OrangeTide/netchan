@@ -78,7 +78,7 @@
 #define NC_CRYPTO_OVERHEAD   25       /* type + counter + mac */
 #define NC_CRYPTO_SID_LEN    32       /* exported session id */
 
-/*
+/**
  * Verdict on a peer's static public key, called once, after the peer's HELLO
  * is parsed and before any key material is derived from it.
  *
@@ -111,7 +111,7 @@ struct nc_crypto {
     void    *verify_ctx;
 };
 
-/*
+/**
  * Everything optional about a session, so the common case stays a zeroed
  * struct and new knobs do not keep changing nc_crypto_init's signature.
  */
@@ -124,7 +124,7 @@ struct nc_crypto_cfg {
     void          *verify_ctx;
 };
 
-/*
+/**
  * Initialise. role is 0 for the connecting side, 1 for the accepting side.
  * cfg may be NULL, which selects a fresh ephemeral key from the OS RNG, no
  * pre-shared key, and no identity key: the unauthenticated NN handshake.
@@ -134,23 +134,23 @@ struct nc_crypto_cfg {
 int nc_crypto_init(struct nc_crypto *c, int role,
                    const struct nc_crypto_cfg *cfg);
 
-/* Derive the public half of a 32-byte X25519 identity secret, so a program
+/** Derive the public half of a 32-byte X25519 identity secret, so a program
  * can print or store its own key without pulling in monocypher itself. */
 void nc_crypto_identity_public(uint8_t out[32], const uint8_t static_sk[32]);
 
-/* Write our HELLO handshake packet into out (>= NC_CRYPTO_HELLO_LEN).
+/** Write our HELLO handshake packet into out (>= NC_CRYPTO_HELLO_LEN).
  * Send this until the session is ready. Returns the byte count. */
 size_t nc_crypto_handshake_packet(const struct nc_crypto *c,
                                   uint8_t *out, size_t cap);
 
-/* True once the session keys are derived and DATA can flow. */
+/** True once the session keys are derived and DATA can flow. */
 bool nc_crypto_ready(const struct nc_crypto *c);
 
-/* True if verify_peer refused this peer, or a required identity key was
+/** True if verify_peer refused this peer, or a required identity key was
  * missing. The session is dead and will never become ready. */
 bool nc_crypto_failed(const struct nc_crypto *c);
 
-/*
+/**
  * A 32-byte value derived from the same handshake transcript as the session
  * keys, under a different label, so it can be published without revealing
  * anything about them. It is unique per session and it commits to both
@@ -162,13 +162,13 @@ bool nc_crypto_failed(const struct nc_crypto *c);
  */
 const uint8_t *nc_crypto_session_id(const struct nc_crypto *c);
 
-/* Seal a plaintext netchan datagram. Returns the wrapped length
+/** Seal a plaintext netchan datagram. Returns the wrapped length
  * (len + NC_CRYPTO_OVERHEAD), or NC_CRYPTO_ERR on error, not ready, or no
  * room. */
 long nc_crypto_seal(struct nc_crypto *c, const uint8_t *plain, size_t len,
                     uint8_t *out, size_t cap);
 
-/* Process one incoming datagram.
+/** Process one incoming datagram.
  *   HELLO packet: consumes it (may make the session ready); returns 0.
  *   DATA packet : writes plaintext to out; returns its length (> 0).
  *   bad auth / replay / malformed: returns NC_CRYPTO_ERR.

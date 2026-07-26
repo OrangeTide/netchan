@@ -40,7 +40,7 @@
 #define NC_WS_PING    0x9
 #define NC_WS_PONG    0xA
 
-/* A parsed frame. payload points into the caller's buffer (unmasked in
+/** A parsed frame. payload points into the caller's buffer (unmasked in
  * place), so that buffer must stay put and writable while the frame is used. */
 struct nc_ws_frame {
     int      opcode;
@@ -49,7 +49,7 @@ struct nc_ws_frame {
     size_t   payload_len;
 };
 
-/*
+/**
  * Server handshake. Inspect an accumulated HTTP request in req[0..req_len).
  *   >0  a complete, valid Upgrade request: the 101 response is written into
  *       resp (up to resp_cap) and its length returned.
@@ -59,7 +59,7 @@ struct nc_ws_frame {
  */
 int nc_ws_accept(const char *req, size_t req_len, char *resp, size_t resp_cap);
 
-/*
+/**
  * Client handshake. Build a GET upgrade request for host/path using the
  * caller-supplied 16 random key bytes, and write the Sec-WebSocket-Accept
  * value the server must echo into expect (needs 32 bytes). Returns the
@@ -69,7 +69,7 @@ size_t nc_ws_client_request(char *buf, size_t cap, const char *host,
                             const char *path, const uint8_t key16[16],
                             char expect[32]);
 
-/*
+/**
  * Verify a server's handshake reply in resp[0..len).
  *   1  complete and the accept value matches expect: connected.
  *   0  the response headers are not complete yet.
@@ -77,7 +77,7 @@ size_t nc_ws_client_request(char *buf, size_t cap, const char *host,
  */
 int nc_ws_client_verify(const char *resp, size_t len, const char *expect);
 
-/*
+/**
  * Parse one frame from the front of buf[0..len). buf must be writable: a
  * masked payload is unmasked in place. Returns the number of bytes the frame
  * occupies (so the caller can slide the buffer down), 0 if a full frame is
@@ -86,7 +86,7 @@ int nc_ws_client_verify(const char *resp, size_t len, const char *expect);
  */
 long nc_ws_frame_parse(uint8_t *buf, size_t len, struct nc_ws_frame *f);
 
-/*
+/**
  * Build a single FIN frame carrying payload with the given opcode into
  * out[0..cap). If mask4 is non-NULL the payload is masked with those four
  * bytes (clients must mask; servers must not). Returns the total frame
