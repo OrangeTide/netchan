@@ -76,19 +76,15 @@ make analyze              # build under gcc -fanalyzer
 make NETCHAN_EXAMPLES=0   # library and tests only
 ```
 
-`netchan_feed` is the library's whole untrusted surface, so it has a fuzz
-harness in `tests/fuzz_netchan_feed.c`. The suite replays its checked-in
-corpus on every platform; to fuzz for real:
-
-```sh
-clang -fsanitize=fuzzer,address,undefined -Isrc -Itransport \
-    tests/fuzz_netchan_feed.c src/netchan.c -o fuzz_feed
-./fuzz_feed tests/fuzz_corpus
-```
-
 Binaries land in `_out/<triplet>/bin/`. A minimal `cc`-only build of the core
 is kept in `Makefile.simple`, for anyone who wants to check that the
 no-dependencies claim is real.
+
+`netchan_feed` is the library's whole untrusted surface, so it has a fuzz
+harness whose corpus the suite replays on every platform. See
+[docs/testing.md](docs/testing.md) for that, the sanitizer and static-analysis
+passes, and what each has found. [TODO.md](TODO.md) records what is
+deliberately not done, including a costed plan for bounded model checking.
 
 The suite is clean under AddressSanitizer and UndefinedBehaviorSanitizer:
 
