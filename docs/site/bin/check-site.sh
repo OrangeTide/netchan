@@ -115,8 +115,20 @@ for f in $html_files; do
     # word splitting would turn one link into two phantom ones. The here-doc
     # keeps the loop in this shell so the error counters survive it.
     while IFS= read -r ref; do
+        # A fragment-only link points inside this page. Splitting one long
+        # page into several is exactly when these go stale, so check that the
+        # anchor still exists rather than assuming it does.
         case "$ref" in
-            ''|'#'*|http://*|https://*|mailto:*|data:*|//*) continue ;;
+            '#'*)
+                frag="${ref#\#}"
+                [ -z "$frag" ] && continue
+                grep -q "id=\"$frag\"\|name=\"$frag\"" "$f" ||
+                    err "$rel: \"$ref\" has no matching id in this page"
+                continue
+                ;;
+        esac
+        case "$ref" in
+            ''|http://*|https://*|mailto:*|data:*|//*) continue ;;
             /*)
                 err "$rel: root-absolute link \"$ref\" breaks on project Pages (use a relative path)"
                 continue
@@ -135,9 +147,23 @@ for f in $html_files; do
         path="$base/$target"
         if [ -d "$path" ]; then
             [ -f "$path/index.html" ] || err "$rel: \"$ref\" is a directory with no index.html"
+            path="$path/index.html"
         elif [ ! -e "$path" ]; then
             err "$rel: \"$ref\" does not exist in the output"
+            continue
         fi
+
+        # A fragment on a link to another page: the page exists, but the
+        # anchor within it may not.
+        case "$ref" in
+            *'#'*)
+                frag="${ref#*#}"
+                [ -z "$frag" ] && continue
+                [ -f "$path" ] || continue
+                grep -q "id=\"$frag\"\|name=\"$frag\"" "$path" ||
+                    err "$rel: \"$ref\" points at a missing anchor in $target"
+                ;;
+        esac
     done <<REFS
 $refs
 REFS

@@ -11,5 +11,6 @@ A channel opens with a `CHANNEL_OPEN` frame that names its type and its content 
 
 ![handshake](handshake.svg)
 
-Several frames travel in one datagram. A datagram is a small header followed by a run of frames, so a single packet can carry a channel's data, an acknowledgement for another channel, and a keepalive at once. The [protocol reference](#reference) lists the header and every frame type.
+Several frames travel in one datagram. A datagram is a small header followed by a run of frames, so a single packet can carry a channel's data, an acknowledgement for another channel, and a keepalive at once. The [protocol reference](../protocol-reference/) lists the header and every
+frame type.
 
