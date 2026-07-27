@@ -84,8 +84,7 @@ no-dependencies claim is real.
 harness whose corpus the suite replays on every platform. The manual's
 [Testing and analysis](https://orangetide.github.io/netchan/testing/) page
 covers that, the sanitizer and static-analysis passes, and what each has
-found. [TODO.md](TODO.md) records what is deliberately not done, including a
-costed plan for bounded model checking.
+found.
 
 ## Documentation
 

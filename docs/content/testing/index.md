@@ -138,8 +138,9 @@ As of 0.8.0, on this tree:
 Worth stating plainly: the two analyzer findings were both in test code, and
 the fuzzer has not yet found anything. That is a weaker claim than it sounds.
 It means the parsers survive the inputs a fuzzer reaches in minutes, not that
-they are correct. `TODO.md` in the repository records what would
-strengthen it, including a costed plan for bounded model checking.
+they are correct. Bounded model checking of the frame parsers is the next
+thing that would strengthen it, by exhausting the input space up to a depth
+rather than sampling it.
 
 ## What is not covered
 
