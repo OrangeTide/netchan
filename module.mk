@@ -31,9 +31,9 @@ NETCHAN_SRC_INC := -I$(ROOT)src
 # expanded later would see whichever one came last. Capture the top now.
 NETCHAN_TOP := $(ROOT)
 
-# idl comes before tests and examples because it exports NETCHAN_IDL_INC and
-# MICROSER_GEN, which their codegen rules read at include time.
-SUBDIRS = third_party src transport crypto auth idl tests
+# idl comes before auth, tests, and examples because it exports
+# NETCHAN_IDL_INC and MICROSER_GEN, which they read at include time.
+SUBDIRS = third_party src transport crypto idl auth tests
 
 NETCHAN_EXAMPLES ?= 1
 ifeq ($(NETCHAN_EXAMPLES),1)

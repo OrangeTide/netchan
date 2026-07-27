@@ -17,8 +17,9 @@ ROOT := $(dir $(lastword $(MAKEFILE_LIST)))
 ifneq ($(_TARGET_OS),Emscripten)
 LIBRARIES += nc_auth
 nc_auth_DIR := $(ROOT)
-nc_auth_SRCS = nc_auth.c
+nc_auth_SRCS = nc_auth.c nc_auth_ia.c
 nc_auth_LIBS = monocypher
+nc_auth_CPPFLAGS = $(NETCHAN_IDL_INC)
 nc_auth_EXPORTED_CPPFLAGS = -I$(nc_auth_DIR)
 
 LIBRARIES += nc_keystore

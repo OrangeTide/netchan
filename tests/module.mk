@@ -110,6 +110,16 @@ $(test_nc_auth_RUN)
 endef
 TEST_TARGETS += test_nc_auth
 
+# --- the interactive method: forms, cancelling, cleanup, resumption ---
+EXECUTABLES += test_nc_auth_ia
+test_nc_auth_ia_DIR := $(ROOT)
+test_nc_auth_ia_SRCS = test_nc_auth_ia.c
+test_nc_auth_ia_LIBS = nc_auth monocypher
+define test_nc_auth_ia_TESTCMD
+$(test_nc_auth_ia_RUN)
+endef
+TEST_TARGETS += test_nc_auth_ia
+
 # --- the five on-disk formats, in a temporary directory ---
 EXECUTABLES += test_keystore
 test_keystore_DIR := $(ROOT)

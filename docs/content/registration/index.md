@@ -3,7 +3,7 @@ title: Registration and interactive authentication
 weight: 12
 abstract: How a client with no account asks a public server for one, and the single interactive method that carries registration, passwords, and tokens alike.
 category: design
-draft: true
+draft: false
 ---
 
 A public game server meets players it has never seen. The client arrives with no
@@ -12,8 +12,10 @@ username, no password, and no enrolled key, so neither of the methods in
 login is even possible, and that something is registration: the server describes
 a form, the player fills it in, and an account exists at the end of it.
 
-Nothing implements this yet. It is a design, and the code it describes has not
-been written.
+`nc_auth` implements this. `auth/nc_auth_ia.c` holds the method and the form
+codec, and `tests/test_nc_auth_ia.c` exercises the edges: a cancel crossing a
+form in flight, a token that has to be dead after the player changed their
+mind, and whether a wiped conversation has a password left in it.
 
 ## One method for every scheme
 
@@ -43,8 +45,9 @@ Messages travel on a reliable stream channel, each one length prefixed. The
 stream handles segmentation and reassembly, so a form larger than the MTU is not
 a special case.
 
-The fixed 256-byte message ceiling `nc_auth` carries today does not survive
-that, and a form arrives while the conversation is suspended waiting for a
+The fixed 256-byte message ceiling the older messages use does not stretch to
+a form, so those two messages are bounded by the caller's buffer instead. A
+form also arrives while the conversation is suspended waiting for a
 human, so it has to be copied somewhere that outlives the caller's receive
 buffer. `nc_auth` allocates nothing and holds nothing that large, so the buffer
 comes from the application, which is also where the real cap on an
@@ -363,8 +366,8 @@ has never heard of it still skips it as bytes.
 Each string carries its own short textual key, so the structure of a record
 lives in the strings rather than in a second layer of binary tags:
 
-    t=text  n=email  l=Email address  max=64  req=1
-    t=password  n=pw  l=Password  min=8
+    t=text  n=user  l=Name  sz=20  ml=32  r=1
+    t=password  n=pw  l=Password  ml=64  r=1
     t=choice  n=shard  l=Realm  o=Ashen Coast  o=Ravenholt
     t=note  l=We sent a code to the address you gave.
 
