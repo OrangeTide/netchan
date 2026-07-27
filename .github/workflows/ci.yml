@@ -188,7 +188,8 @@ jobs:
           cc -Wall -Wextra -Werror -o app main.c \
              $(find vendor/netchan -maxdepth 2 -name '*.c') \
              -Ivendor/netchan/src -Ivendor/netchan/crypto \
-             -Ivendor/netchan/third_party -Ivendor/netchan/auth
+             -Ivendor/netchan/third_party -Ivendor/netchan/idl \
+             -Ivendor/netchan/auth
           ./app
 
   windows:

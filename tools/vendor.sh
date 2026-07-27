@@ -49,7 +49,9 @@ Layers, each of which pulls in what it needs:
   udp      core + UDP addresses    transport/nc_udp.*
   ws       core + WebSocket codec  transport/nc_ws.*
   crypto   core + encryption       crypto/, third_party/
-  auth     crypto + a login        auth/
+  idl      microser, the encoder   idl/
+  auth     crypto + idl + a login  auth/
+  disco    finding servers         discovery/
   micro    the microchan variant   microchan/src/, microchan/transport/mc_udp.*
   all      everything above
 
@@ -68,7 +70,9 @@ layer_paths() {
     udp)    echo "transport/nc_udp.c transport/nc_udp.h" ;;
     ws)     echo "transport/nc_ws.c transport/nc_ws.h" ;;
     crypto) echo "crypto third_party" ;;
+    idl)    echo "idl" ;;
     auth)   echo "auth" ;;
+    disco)  echo "discovery" ;;
     micro)  echo "microchan/src microchan/transport/mc_udp.c microchan/transport/mc_udp.h" ;;
     *)      echo "" ;;
     esac
@@ -82,7 +86,9 @@ layer_deps() {
     udp)    echo "core" ;;
     ws)     echo "core" ;;
     crypto) echo "core" ;;
-    auth)   echo "core crypto" ;;
+    idl)    echo "" ;;
+    auth)   echo "core crypto idl" ;;
+    disco)  echo "idl" ;;
     micro)  echo "" ;;
     *)      echo "" ;;
     esac
@@ -134,7 +140,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ "$LIST" -eq 1 ]; then
-    for l in core udp ws crypto auth micro; do
+    for l in core udp ws crypto idl auth disco micro; do
         printf '%-8s %s\n' "$l" "$(layer_paths "$l")"
     done
     exit 0
@@ -143,7 +149,7 @@ fi
 [ -n "$LAYERS" ] || LAYERS=core
 
 case " $LAYERS " in
-*" all "*) LAYERS="core udp ws crypto auth micro" ;;
+*" all "*) LAYERS="core udp ws crypto idl auth disco micro" ;;
 esac
 
 # Expand dependencies and drop duplicates, so --layer auth --layer core does
@@ -258,7 +264,9 @@ for l in $WANTED; do
     core)   printf ' -I%s/src' "$DEST" ;;
     udp|ws) printf ' -I%s/transport' "$DEST" ;;
     crypto) printf ' -I%s/crypto -I%s/third_party' "$DEST" "$DEST" ;;
+    idl)    printf ' -I%s/idl' "$DEST" ;;
     auth)   printf ' -I%s/auth' "$DEST" ;;
+    disco)  printf ' -I%s/discovery' "$DEST" ;;
     micro)  printf ' -I%s/microchan/src -I%s/microchan/transport' "$DEST" "$DEST" ;;
     esac
 done
