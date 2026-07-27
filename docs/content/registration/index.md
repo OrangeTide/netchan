@@ -101,11 +101,11 @@ yet.
 ## The exchange
 
 Registration is offered in `METHODS` like any other method. A client that wants
-an account selects it, and the interactive loop begins.
+an account chooses it, and the interactive loop begins.
 
     client -> HELLO        "I claim to be <user>", or no name at all
     server -> METHODS      "publickey, password, register"
-    client -> BEGIN        selects the interactive method
+    client -> BEGIN        chooses to register rather than log in
     server -> FORM         a field list and a transaction id
     client -> SUBMIT       values for those fields
     server -> FORM         again, with per-field errors, or asking for more
@@ -138,6 +138,38 @@ thread serves every other connection. `WAIT` is what lets the server start the
 slow thing and return immediately, which is the same reason the client side of
 `nc_auth` has no callbacks: a state machine that calls out into code which
 might wait has a place for a blocking read to hide.
+
+**Choosing is a question for the player.** The client machine picks its own
+order between publickey and password, and can, because both are attempts to log
+in as the same person and failing from one to the next asks nobody anything.
+Registration is not a link in that chain. It is a different intent, and no
+ordering rule can infer it: the player pressed "create account" rather than
+"log in", and only the player knows that. So it arrives the way every other
+human answer does here, by suspending the conversation until the application
+supplies it. A server offering only publickey and password suspends nothing and
+behaves exactly as it did before.
+
+Usually there is nothing to wait for. A player who clicked "create account" in
+the main menu decided before the socket was open, so the answer can be given in
+advance and applied the moment the offer lands.
+
+`BEGIN` is a message of its own rather than something folded into `HELLO`, and
+the reason is worth more than the message it saves. It can be sent well into
+the conversation. A player who mistypes a password, fails, and works out they
+never had an account on this shard registers from where they are, without
+dropping the session and starting over. Folding the intent into the opening
+message would make registration something you can only ask for in the first
+breath, and it would invert the server's order of work, since the callback that
+decides what to offer is given the name first.
+
+Registration being a bit in `METHODS` is also what lets a client draw its own
+login screen. The alternative is a single interactive method whose first form
+asks "log in, or create an account", which is simpler in every way except the
+one that matters: it puts a server-drawn choice screen in front of the game's
+own branded login for every player, every time, and leaves the client unable to
+know whether registration is open before asking. One bit is cheap, and it buys
+the client the ability to present registration natively, at the moment the
+player expects it.
 
 **Registration returns to the state before it.** `DONE` does not authenticate
 anyone. It puts the conversation back at the point where the server offered

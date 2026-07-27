@@ -162,7 +162,9 @@ struct nc_form_value {
  * likes, and nc_auth_submit() resumes it.
  ****************************************************************/
 
-#define NC_AUTH_NEED_FORM  3   /* joins the NC_AUTH_NEED_* enum in nc_auth.h */
+/* Both join the NC_AUTH_NEED_* enum in nc_auth.h. */
+#define NC_AUTH_NEED_METHOD  3   /* log in, or make an account? */
+#define NC_AUTH_NEED_FORM    4   /* here are the questions; answer them */
 
 /*
  * WAITING IS A STATE, NOT A GAP
@@ -178,12 +180,43 @@ struct nc_form_value {
  * speak again, which it does with the next form, or with OK, or with FAIL.
  */
 
-/**
- * Ask for the interactive method. Pass NC_AUTH_M_REGISTER to create an
- * account or NC_AUTH_M_INTERACTIVE to log in with one. Only meaningful once
- * METHODS has arrived and offered the bit.
+/*
+ * CHOOSING A METHOD IS A QUESTION FOR THE HUMAN
+ *
+ * The client machine picks its own order today: publickey, then password if
+ * that is refused. It can, because both are attempts to log in as the same
+ * person and failing from one to the next costs nothing and asks nobody
+ * anything.
+ *
+ * Registration is not a link in that chain. It is a different intent, and no
+ * ordering rule can infer it: the player pressed "create account" rather than
+ * "log in", and only the player knows that. So it arrives the way every other
+ * human answer arrives here, by suspending and being supplied.
+ *
+ * The conversation only suspends when there is a choice worth making, which in
+ * practice means when the server offered NC_AUTH_M_REGISTER. Offered publickey
+ * and password alone, the machine chains as it always did and the application
+ * sees no change.
  */
-void nc_auth_select(struct nc_auth *a, unsigned method);
+
+/**
+ * Answer NC_AUTH_NEED_METHOD with one NC_AUTH_M_* bit. Passing 0 means none of
+ * them are wanted, which ends the conversation, and is what a cancelled login
+ * screen calls.
+ *
+ * May be called before METHODS arrives, and usually is: a player who clicked
+ * "create account" in the main menu decided before the socket was open. The
+ * choice is remembered and applied when the offer lands, so the conversation
+ * never suspends and the login screen never flickers. If the server turns out
+ * not to offer the chosen method, the conversation suspends and asks properly.
+ */
+void nc_auth_supply_method(struct nc_auth *a, unsigned method);
+
+/** What the server offered, once METHODS has arrived: a mask of NC_AUTH_M_*
+ * bits, or 0 before that. A client draws its "create account" button from
+ * this, which is the whole reason registration is a bit in METHODS rather than
+ * a question inside the first form. */
+unsigned nc_auth_offered(const struct nc_auth *a);
 
 /**
  * The form the client is suspended on. The returned pointers are into the
@@ -385,7 +418,7 @@ long nc_auth_framer_next(struct nc_auth_framer *f, const void **msg);
  *
  * Four added to the six in nc_auth.c:
  *
- *   MSG_IA_BEGIN   C->S  the selected method bit, and a token if resuming
+ *   MSG_IA_BEGIN   C->S  the chosen method bit, and a token if resuming
  *   MSG_IA_FORM    S->C  title, note, fields, errors
  *   MSG_IA_SUBMIT  C->S  answers, by name
  *   MSG_IA_WAIT    S->C  the slow thing has been started, and what to say
@@ -394,6 +427,12 @@ long nc_auth_framer_next(struct nc_auth_framer *f, const void **msg);
  * existing MSG_OK or MSG_FAIL. A MSG_IA_WAIT is followed later by whichever of
  * those the server settles on. Registration finishing is MSG_METHODS again,
  * which the client already handles.
+ *
+ * MSG_IA_BEGIN is a message of its own rather than a field folded into
+ * MSG_HELLO, and not only to keep HELLO's meaning intact. It may be sent well
+ * into the conversation. A player who mistypes a password, fails, and works
+ * out that they never had an account here registers from where they are,
+ * without dropping the session and starting over.
  *
  * THE FIELD ENCODING
  *
@@ -428,9 +467,6 @@ long nc_auth_framer_next(struct nc_auth_framer *f, const void **msg);
 /****************************************************************
  * Still open
  *
- *  - Whether nc_auth_select is needed at all, or whether the first
- *    MSG_IA_BEGIN can simply be implied by the client answering METHODS.
- *    Deferred.
  *  - Whether the operator's form config file is a keystore format, which is
  *    where the other five plain-text formats live, or stays entirely the
  *    application's business. The struct works either way.
