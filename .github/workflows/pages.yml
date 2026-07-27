@@ -1,7 +1,7 @@
 name: Documentation
 
 # Builds the documentation site on every push and pull request so a broken
-# page, a dead link, or a stale API symbol fails CI. Only a v* tag deploys.
+# page, a dead link, or a stale API symbol fails CI. Only a release tag deploys.
 #
 # The site is a release artifact: every page carries the version it was built
 # from, so publishing on each push would put a -dev build at the address
@@ -13,7 +13,9 @@ name: Documentation
 on:
   push:
     branches: [main]
-    tags: ['v*']
+    # The same pattern release.yml uses. A prerelease like v1.0.0-rc1 is not a
+    # release, so it must not replace the site at the address people cite.
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
   pull_request:
     branches: [main]
   workflow_dispatch:
