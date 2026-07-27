@@ -81,10 +81,19 @@ is kept in `Makefile.simple`, for anyone who wants to check that the
 no-dependencies claim is real.
 
 `netchan_feed` is the library's whole untrusted surface, so it has a fuzz
-harness whose corpus the suite replays on every platform. See
-[docs/testing.md](docs/testing.md) for that, the sanitizer and static-analysis
-passes, and what each has found. [TODO.md](TODO.md) records what is
-deliberately not done, including a costed plan for bounded model checking.
+harness whose corpus the suite replays on every platform. The manual's
+[Testing and analysis](https://orangetide.github.io/netchan/testing/) page
+covers that, the sanitizer and static-analysis passes, and what each has
+found. [TODO.md](TODO.md) records what is deliberately not done, including a
+costed plan for bounded model checking.
+
+## Documentation
+
+The manual is at <https://orangetide.github.io/netchan/>: introduction,
+architecture, four tutorials, the wire protocol, message encoding, testing,
+and an API reference generated from `src/netchan.h`. Build it locally with
+`make -C docs serve`. Every page carries the version it was built from, which
+is the release tag on a tagged build and the tag plus the commit otherwise.
 
 The suite is clean under AddressSanitizer and UndefinedBehaviorSanitizer:
 

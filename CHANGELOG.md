@@ -30,6 +30,16 @@ moves because the source API does.
   patterns, so it catches what a review misses: it found a descriptor leaked
   down a failure branch in the secure-link test and a `bind` on an unchecked
   `socket` result in the UDP test, both fixed here.
+- The manual is a multi-page site rather than one assembled HTML page:
+  introduction, architecture, protocol overview, four tutorials, message
+  encoding, protocol reference, testing and analysis, and the API reference.
+  The prose was converted, not rewritten. The API reference is still generated
+  from `src/netchan.h`, and `check-symbols.sh` still fails the build when prose
+  names a function the header no longer declares, now across every page.
+- Every documentation page carries the version it was built from. At a release
+  tag that is the bare version; away from one it is the version, the commit
+  count, and the abbreviated sha, so a page from an untagged build says which
+  commit produced it.
 - A fuzz harness for `netchan_feed`, the core's entire untrusted surface, with
   a checked-in corpus. `make run-tests` replays the corpus on every platform,
   which turns any input the fuzzer once crashed on into a regression test, and

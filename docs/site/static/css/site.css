@@ -159,10 +159,20 @@ th { font-family: ui-sans-serif, system-ui, sans-serif; }
 /* --- figures ------------------------------------------------------------ */
 
 /* Rendered diagrams are line art on whatever background the renderer chose.
-   Give them room and never let a wide graph push the page sideways. */
+   Give them room and never let a wide graph push the page sideways.
+
+   A wide graph scaled to fit a narrow column becomes unreadable, so give the
+   image a floor and let its own container scroll instead. The paragraph wraps
+   the image because Markdown puts it there, which is why the rule targets the
+   paragraph rather than a figure element. */
+.page-body p:has(> img[src$=".svg"]) {
+  overflow-x: auto;
+  margin: 1.5rem 0;
+}
 .page-body img[src$=".svg"] {
   display: block;
-  margin: 1.5rem auto;
+  margin: 0 auto;
+  min-width: 32rem;
   max-width: 100%;
 }
 
