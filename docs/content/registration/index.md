@@ -12,10 +12,10 @@ username, no password, and no enrolled key, so neither of the methods in
 login is even possible, and that something is registration: the server describes
 a form, the player fills it in, and an account exists at the end of it.
 
-This page describes how that conversation is shaped and where its edges are. It
-is a design, not a description of code that exists.
+Nothing implements this yet. It is a design, and the code it describes has not
+been written.
 
-## One method, not a method per scheme
+## One method for every scheme
 
 The obvious move is to add a bit next to `NC_AUTH_M_PUBKEY` and
 `NC_AUTH_M_PASSWORD` for every new scheme. Registration would get one, one-time
@@ -41,9 +41,15 @@ describes, and registration is more of the same conversation.
 
 Messages travel on a reliable stream channel, each one length prefixed. The
 stream handles segmentation and reassembly, so a form larger than the MTU is not
-a special case and no message size constant needs to grow to accommodate one. A
-peer that has not authenticated yet is still capped, in bytes and in messages, to
-bound what a stranger can make the server hold.
+a special case.
+
+The fixed 256-byte message ceiling `nc_auth` carries today does not survive
+that, and a form arrives while the conversation is suspended waiting for a
+human, so it has to be copied somewhere that outlives the caller's receive
+buffer. `nc_auth` allocates nothing and holds nothing that large, so the buffer
+comes from the application, which is also where the real cap on an
+unauthenticated peer ends up: a stranger can make the server hold exactly as
+much as its operator chose to offer.
 
 A stream hands back bytes rather than messages, so somebody has to write the
 length in front of each one and reassemble on the far side. `nc_auth` ships
@@ -59,19 +65,22 @@ identity key in advance. A player registering for the first time is exactly the
 case where that assumption is weakest, and it is also the moment they are about
 to type a password.
 
-Trust on first use is the fallback, not the plan. The plan is that the client
-already holds the key before it connects, and there are two shapes that fit:
+The client should already hold the key before it connects, and there are two
+shapes that fit:
 
 - The installer bundles a `known_hosts` file listing the official servers.
 - The game refreshes that file over HTTPS from a site it already trusts.
 
 Both are the application's to build. netchan supplies the `known_hosts` format
-and the `verify_peer` callback that consults it, and stops there.
+and the `verify_peer` callback that consults it, and stops there. Trust on first
+use is what happens when neither is in place.
 
-**Threat model.** The concern here is abuse and griefing, not a funded attacker.
-The design is best effort: it should make casual mischief expensive and should
-not leak credentials to a passive observer, and it does not attempt more than
-that. Two consequences are accepted deliberately rather than defended against.
+### Threat model
+
+The concern here is abuse and griefing, not a funded attacker. The design is
+best effort: it should make casual mischief expensive and should not leak
+credentials to a passive observer, and it attempts no more than that. Two
+consequences are accepted deliberately rather than defended against.
 
 A registration form tells a stranger whether a username is taken, which is an
 account enumeration oracle. Every signup flow has one. The alternative is to
@@ -88,9 +97,9 @@ block a persistent source at the firewall. That is a better tool than anything
 netchan could grow, and it is the same arrangement that has protected sshd for
 years.
 
-**Amplification is a transport concern, not this one.** The rule that a response
-must not exceed the request that provoked it belongs in `nc_crypto` and the
-transport, where an unvalidated address can still be spoofed. By the time an
+Amplification belongs to the transport. The rule that a response
+must not exceed the request that provoked it lives in `nc_crypto` and below,
+where an unvalidated address can still be spoofed. By the time an
 auth message flows, the X25519 handshake has completed, which means the client
 received a server packet and answered it, which proves it holds the address it
 claims. Applying a size rule to the interactive exchange would only create a
@@ -124,12 +133,14 @@ when it hears back.
 The loop is not bounded by a fixed number of rounds. Email confirmation, a
 second factor, and a corrected typo are all just another turn.
 
-**Waiting is a state, not a gap.** Between "here is my address" and "here is
-the code from the mail" the client has no question to answer and nothing to
-draw, and a client drawing nothing looks broken. So the server says so out
-loud. `WAIT` carries the text to show the player and moves both ends into a
-state that is explicitly about waiting for the external service, and the client
-stops rendering a form until the server speaks again.
+### Waiting is a state of its own
+
+Between "here is my address" and "here is the code from the mail" the client has
+no question to answer and nothing to draw, and a client drawing nothing looks
+broken. So the server says so out loud. `WAIT` carries the text to show the
+player and moves both ends into a state that is explicitly about waiting for the
+external service, and the client stops rendering a form until the server speaks
+again.
 
 That message also keeps the server out of trouble. The obvious way to send a
 confirmation mail is to send it from inside the code that handles the
@@ -139,10 +150,11 @@ slow thing and return immediately, which is the same reason the client side of
 `nc_auth` has no callbacks: a state machine that calls out into code which
 might wait has a place for a blocking read to hide.
 
-**Choosing is a question for the player.** The client machine picks its own
-order between publickey and password, and can, because both are attempts to log
-in as the same person and failing from one to the next asks nobody anything.
-Registration is not a link in that chain. It is a different intent, and no
+### Choosing is a question for the player
+
+The client machine picks its own order between publickey and password, and can,
+because both are attempts to log in as the same person and failing from one to
+the next asks nobody anything. Registration is a different intent, and no
 ordering rule can infer it: the player pressed "create account" rather than
 "log in", and only the player knows that. So it arrives the way every other
 human answer does here, by suspending the conversation until the application
@@ -171,7 +183,9 @@ know whether registration is open before asking. One bit is cheap, and it buys
 the client the ability to present registration natively, at the moment the
 player expects it.
 
-**Registration returns to the state before it.** `DONE` does not authenticate
+### Registration returns to the state before it
+
+`DONE` does not authenticate
 anyone. It puts the conversation back at the point where the server offered
 methods, and the server runs its `methods` callback again, because the answer
 has changed: the user now exists. The client then logs in normally, with the
@@ -181,7 +195,9 @@ This costs a few messages and buys a clean separation. There is exactly one path
 into an authenticated session, and it is the same one an established player
 takes every day.
 
-**Enrolling a key proves possession.** If registration carries a client public
+### Enrolling a key proves possession
+
+If registration carries a client public
 key, the client also signs the digest from `nc_auth_signed_digest`, the same one
 a login signs, over the same session id. Recording a bare public key would only
 prove someone pasted it. The signature proves the client holds the secret half.
@@ -202,9 +218,9 @@ references, and malformed nesting, then exposing it to the first message a
 stranger can send, and no browser will ever render this anyway. A flat array
 costs nothing to decode and cannot be malformed in interesting ways.
 
-**The form is the operator's, not the game's.** This is why it describes itself
-rather than being a struct both ends were compiled against. A registration form
-is configuration, and two shards of one game are not configured alike: one asks
+The form belongs to the operator, which is why it describes itself rather than
+being a struct both ends were compiled against. A registration form is
+configuration, and two shards of one game are not configured alike: one asks
 for a date of birth, one wants an invite code, one runs somewhere that requires
 an age check and one does not. A client that has to be rebuilt to see a new
 field is a client that cannot follow its own game. The server sends what its
@@ -252,8 +268,9 @@ similar flow is not a question with an answer, it is an instruction to go
 somewhere else and come back, and there is no way to express that with input
 fields alone.
 
-**Everything is a hint.** `maxlength`, `min`, `max`, `pattern`, and `required`
-exist so the client can catch a typo without a round trip. The server revalidates
+Every one of those attributes is a hint. `maxlength`, `min`, `max`, `pattern`,
+and `required` exist so the client can catch a typo without a round trip. The
+server revalidates
 every one of them on arrival and applies its own limits regardless of what the
 form declared. A client that ignores the hints entirely is rude, not dangerous.
 
@@ -303,7 +320,7 @@ A registration that waits on an emailed code stays open for minutes. The
 connection itself survives that, because netchan sends a keepalive when a session
 is otherwise idle, and the interactive loop has no timer of its own.
 
-The connection is not what fails. The player opens the mail on their phone, or
+The failures come from elsewhere. The player opens the mail on their phone, or
 the game crashes, or the wifi drops, and a registration that lived only in the
 connection is lost with it. So a pending registration lives on the server, keyed
 by a token handed to the client, and a fresh connection can present that token
@@ -313,9 +330,9 @@ address is capped, so a stranger cannot hold a hundred of them open.
 
 A one-time login token is a bearer credential, for the case where a player logs
 in through a link in an email or a code sent by SMS. Holding it is being the
-user. Its security is exactly the security of the channel that delivered it,
-which is worth saying plainly rather than dressing up: an emailed token is as
-safe as the player's mailbox. Such tokens are single use and short lived.
+user. Its security is exactly the security of the channel that delivered it: an
+emailed token is as safe as the player's mailbox. Such tokens are single use and
+short lived.
 
 ## What netchan does not do
 

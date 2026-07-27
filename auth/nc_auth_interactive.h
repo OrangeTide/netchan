@@ -467,6 +467,11 @@ long nc_auth_framer_next(struct nc_auth_framer *f, const void **msg);
 /****************************************************************
  * Still open
  *
+ *  - The transaction id. The design leans on one twice, once as where a form
+ *    and its answers are tied together and once as the reason there are no
+ *    hidden fields, and nothing here declares it. Either it is explicit in
+ *    MSG_IA_FORM and MSG_IA_SUBMIT, or the reliable ordered channel makes it
+ *    redundant and the argument against hidden fields has to be made again.
  *  - Whether the operator's form config file is a keystore format, which is
  *    where the other five plain-text formats live, or stays entirely the
  *    application's business. The struct works either way.
