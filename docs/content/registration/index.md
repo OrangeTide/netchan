@@ -45,6 +45,13 @@ a special case and no message size constant needs to grow to accommodate one. A
 peer that has not authenticated yet is still capped, in bytes and in messages, to
 bound what a stranger can make the server hold.
 
+A stream hands back bytes rather than messages, so somebody has to write the
+length in front of each one and reassemble on the far side. `nc_auth` ships
+that, because otherwise every caller writes the same twenty lines and some of
+them get the partial read wrong. The helper knows nothing about netchan either:
+bytes go in, whole messages come out, which is what keeps a test able to drive
+both state machines in one process with no transport at all.
+
 ## Trusting the server on first contact
 
 `nc_crypto` authenticates the server because the client knows the server's
@@ -103,14 +110,34 @@ an account selects it, and the interactive loop begins.
     client -> SUBMIT       values for those fields
     server -> FORM         again, with per-field errors, or asking for more
     client -> SUBMIT
+    server -> WAIT         "we sent a code to the address you gave"
+    server -> FORM         "enter the code"
+    client -> SUBMIT
     server -> DONE         the account exists
 
-A submission has three possible answers. `DONE` ends the registration. Another
+A submission has four possible answers. `DONE` ends the registration. Another
 `FORM` continues it, either because a field was rejected or because the next
-step needs different questions. `DENIED` ends it without an account.
+step needs different questions. `DENIED` ends it without an account. `WAIT`
+says the server has handed the work to something slow and will speak again
+when it hears back.
 
 The loop is not bounded by a fixed number of rounds. Email confirmation, a
 second factor, and a corrected typo are all just another turn.
+
+**Waiting is a state, not a gap.** Between "here is my address" and "here is
+the code from the mail" the client has no question to answer and nothing to
+draw, and a client drawing nothing looks broken. So the server says so out
+loud. `WAIT` carries the text to show the player and moves both ends into a
+state that is explicitly about waiting for the external service, and the client
+stops rendering a form until the server speaks again.
+
+That message also keeps the server out of trouble. The obvious way to send a
+confirmation mail is to send it from inside the code that handles the
+submission, which stops that thread while a mail server is thought about. One
+thread serves every other connection. `WAIT` is what lets the server start the
+slow thing and return immediately, which is the same reason the client side of
+`nc_auth` has no callbacks: a state machine that calls out into code which
+might wait has a place for a blocking read to hide.
 
 **Registration returns to the state before it.** `DONE` does not authenticate
 anyone. It puts the conversation back at the point where the server offered
@@ -142,6 +169,14 @@ vocabulary. A tag syntax would mean writing a parser for quoting, entity
 references, and malformed nesting, then exposing it to the first message a
 stranger can send, and no browser will ever render this anyway. A flat array
 costs nothing to decode and cannot be malformed in interesting ways.
+
+**The form is the operator's, not the game's.** This is why it describes itself
+rather than being a struct both ends were compiled against. A registration form
+is configuration, and two shards of one game are not configured alike: one asks
+for a date of birth, one wants an invite code, one runs somewhere that requires
+an age check and one does not. A client that has to be rebuilt to see a new
+field is a client that cannot follow its own game. The server sends what its
+operator wrote, and the client renders whatever arrives.
 
 | Type | Carries | Attributes beyond the common ones |
 |---|---|---|
@@ -191,6 +226,30 @@ every one of them on arrival and applies its own limits regardless of what the
 form declared. A client that ignores the hints entirely is rude, not dangerous.
 
 Text is UTF-8 throughout.
+
+## How a form is encoded
+
+A form is a variable run of variable records, and the IDL has no repeated
+field. Teaching the generator one is a large change for a single use, so the
+IDL gains a narrower type instead. A `stringlist` is any number of
+length-prefixed strings packed back to back inside one ordinary bytes field. It
+needs no new wire type, does not touch the tag space, and an older reader that
+has never heard of it still skips it as bytes.
+
+Each string carries its own short textual key, so the structure of a record
+lives in the strings rather than in a second layer of binary tags:
+
+    t=text  n=email  l=Email address  max=64  req=1
+    t=password  n=pw  l=Password  min=8
+    t=choice  n=shard  l=Realm  o=Ashen Coast  o=Ravenholt
+    t=note  l=We sent a code to the address you gave.
+
+A record begins wherever `t=` appears, so the run is self-delimiting. There is
+no nesting and no separator to get wrong. Numbers are decimal text, which costs
+a few bytes and buys a form that can be read in a hex dump and that maps almost
+line for line onto the file its operator wrote it in. An error is an `e=` entry
+inside the record it belongs to. Answers come back the same way, `n=` and `v=`,
+with `v=` repeated when a choice allows more than one.
 
 ## Errors
 

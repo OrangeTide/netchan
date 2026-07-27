@@ -1,0 +1,441 @@
+/* nc_auth_interactive.h : API sketch for the interactive auth method */
+
+/*
+ * THIS FILE IS A SKETCH. Nothing implements it, and it is not in module.mk.
+ * It exists to be argued with. See docs/content/registration/index.md for the
+ * design it follows.
+ *
+ * These declarations belong in nc_auth.h once they settle. They are kept
+ * apart only so the real header keeps describing code that exists.
+ *
+ * WHAT THIS ADDS
+ *
+ * nc_auth today knows two methods, publickey and password, each with its own
+ * message and its own state. A third scheme would need a third of each, and a
+ * fourth a fourth. The interactive method ends that: the server sends a form,
+ * the client renders it, the answers come back, and the loop repeats until the
+ * server is satisfied. Registration, email confirmation, a one-time token, and
+ * a second factor are all the same three messages.
+ *
+ * The method carries no scheme of its own and never learns what an account is.
+ */
+
+#ifndef NC_AUTH_INTERACTIVE_H
+#define NC_AUTH_INTERACTIVE_H
+
+#include "nc_auth.h"
+
+/****************************************************************
+ * Method bits, added to those in nc_auth.h
+ ****************************************************************/
+
+/*
+ * Two bits, one loop. They differ in what the client is asking for, which is
+ * the only thing the client cannot work out for itself: whether this server
+ * will create an account at all, and so whether to draw the button.
+ */
+#define NC_AUTH_M_INTERACTIVE  0x04  /* log in by answering questions */
+#define NC_AUTH_M_REGISTER     0x08  /* create an account by answering them */
+
+/****************************************************************
+ * Bounds
+ *
+ * Every one of these is a limit on what an unauthenticated stranger can make
+ * the far side hold. They are not sized to be generous.
+ ****************************************************************/
+
+#define NC_FORM_MAX_FIELDS    24
+#define NC_FORM_MAX_OPTIONS   16
+#define NC_FORM_MAX_NAME      32   /* the machine name of a field */
+#define NC_FORM_MAX_LABEL    128   /* what the player reads beside the box */
+#define NC_FORM_MAX_VALUE    256   /* one submitted answer */
+#define NC_FORM_MAX_ERRORS   500   /* all error text in one form, in bytes */
+#define NC_FORM_MAX_TOKEN     64   /* a resumption or bearer token */
+
+/****************************************************************
+ * Fields
+ ****************************************************************/
+
+/*
+ * The types are the ones a registration needs and no more. There is no hidden
+ * field, because continuation state belongs in server memory keyed by the
+ * transaction rather than echoed through a client that may edit it. There are
+ * no buttons, because a game draws its own interface and already knows a form
+ * has one submit action. There is no file or image field, because nothing here
+ * wants transfer machinery.
+ */
+enum nc_form_type {
+    NC_FF_TEXT = 1,   /* a line of UTF-8 */
+    NC_FF_PASSWORD,   /* a line the client must not echo or log */
+    NC_FF_EMAIL,      /* user@host */
+    NC_FF_INTEGER,    /* a whole number, optionally ranged */
+    NC_FF_PHONE,      /* digits the client may format by region */
+    NC_FF_BOOL,       /* one yes or no */
+    NC_FF_CHOICE,     /* one of a list, or several of it */
+    NC_FF_NOTE,       /* no answer: text for the player to read */
+    NC_FF_LINK,       /* no answer: a URL to open outside the game */
+};
+
+#define NC_FF_REQUIRED  0x01  /* the client should refuse to submit it empty */
+#define NC_FF_MULTI     0x02  /* NC_FF_CHOICE: more than one may be picked */
+
+/**
+ * One field of a form.
+ *
+ * Nothing here is written to and every string is borrowed, so the same struct
+ * serves a form compiled in as a static table and a form an operator wrote in
+ * a config file and the server parsed at startup. The second case is the
+ * common one and the reason the format describes itself: two shards of one
+ * game are not configured alike, one asks for a date of birth and the next
+ * does not, and a client that has to be rebuilt to see a new field is a client
+ * that cannot follow its own game.
+ *
+ * size, maxlength, min, max, pattern, and NC_FF_REQUIRED are rendering and
+ * typo-catching hints only. The server revalidates every answer on arrival and
+ * applies its own limits whatever the form said. A client that ignores them
+ * all is rude, not dangerous.
+ */
+struct nc_form_field {
+    uint8_t     type;        /* enum nc_form_type */
+    uint8_t     flags;       /* NC_FF_* */
+    const char *name;        /* machine name, unique within the form */
+    const char *label;       /* what the player reads */
+    const char *value;       /* default; the text of a NOTE; the URL of a LINK */
+    const char *pattern;     /* TEXT, PASSWORD: what a valid answer looks like */
+    uint16_t    size;        /* suggested width of the box, in characters */
+    uint16_t    maxlength;   /* suggested cap on the answer */
+    int32_t     min, max;    /* INTEGER: inclusive range, equal to disable */
+    const char *const *options;  /* CHOICE */
+    uint8_t     noptions;
+};
+
+/** A message attached to the field that caused it, sent with a re-issued form. */
+struct nc_form_error {
+    const char *name;        /* the field it belongs beside */
+    const char *message;
+};
+
+/**
+ * A form as the server hands it over.
+ *
+ * title and note are the form's own text. The errors array is what turns a
+ * rejection into something a player can act on: without it, six boxes and one
+ * complaint means guessing which box was wrong. A server need not explain every
+ * failure, and a form with no errors at all still says the submission was
+ * refused. Keep the combined message text inside NC_FORM_MAX_ERRORS. Anything
+ * longer belongs in a NOTE, where it is read once instead of on every retry.
+ */
+struct nc_form {
+    const char *title;
+    const char *note;
+    const struct nc_form_field *fields;
+    uint8_t     nfields;
+    const struct nc_form_error *errors;
+    uint8_t     nerrors;
+};
+
+/****************************************************************
+ * Answers
+ ****************************************************************/
+
+/**
+ * One answer. Which member is meaningful follows the field's type: text for
+ * TEXT, PASSWORD, EMAIL, and PHONE; number for INTEGER; on for BOOL; choice
+ * for CHOICE, as an index, or as a bitmask when the field is NC_FF_MULTI.
+ * NOTE and LINK take no answer and are skipped.
+ */
+struct nc_form_value {
+    const char *text;
+    int32_t     number;
+    uint32_t    choice;
+    bool        on;
+};
+
+/****************************************************************
+ * The client side
+ *
+ * The client keeps no callbacks, for the reason nc_auth.h already gives: the
+ * answer comes from a human, a human is slow, and a state machine that calls
+ * out into code which might wait is a state machine with a place for a blocking
+ * read to hide. So the conversation suspends. nc_auth_needs() reports
+ * NC_AUTH_NEED_FORM, the application renders and collects for as long as it
+ * likes, and nc_auth_submit() resumes it.
+ ****************************************************************/
+
+#define NC_AUTH_NEED_FORM  3   /* joins the NC_AUTH_NEED_* enum in nc_auth.h */
+
+/*
+ * WAITING IS A STATE, NOT A GAP
+ *
+ * Between "I gave you my address" and "here is the code from the mail" the
+ * client has nothing to do and nothing to show, and a client showing nothing
+ * looks broken. So the server says so out loud: it sends a wait message
+ * meaning the slow thing has been started, and both ends move into a state
+ * that is explicitly about waiting for it.
+ *
+ * The client is not suspended here. nc_auth_needs() is NC_AUTH_NEED_NOTHING,
+ * because there is no question outstanding. It is waiting for the server to
+ * speak again, which it does with the next form, or with OK, or with FAIL.
+ */
+
+/**
+ * Ask for the interactive method. Pass NC_AUTH_M_REGISTER to create an
+ * account or NC_AUTH_M_INTERACTIVE to log in with one. Only meaningful once
+ * METHODS has arrived and offered the bit.
+ */
+void nc_auth_select(struct nc_auth *a, unsigned method);
+
+/**
+ * The form the client is suspended on. The returned pointers are into the
+ * client's own form buffer, so they stay valid until the next nc_auth_feed.
+ * Returns NULL when nc_auth_needs() is not NC_AUTH_NEED_FORM.
+ */
+const struct nc_form *nc_auth_form(const struct nc_auth *a);
+
+/**
+ * Answer the form and resume. vals is parallel to the form's fields, so the
+ * client indexes rather than matching strings; the names travel on the wire so
+ * the server never has to trust the order it gets back. Entries for NOTE and
+ * LINK fields are ignored.
+ *
+ * Passing NULL abandons the conversation, which is the cancel button.
+ *
+ * As with nc_auth_supply_password, nothing is retained: a PASSWORD answer is
+ * copied into the outgoing message and the copy is wiped.
+ */
+void nc_auth_submit(struct nc_auth *a, const struct nc_form_value *vals, int n);
+
+/**
+ * What the client is waiting on an external service to finish, as the server
+ * described it: "we sent a code to j@example.com". NULL when it is not
+ * waiting. The client shows this and stops drawing a form.
+ */
+const char *nc_auth_waiting(const struct nc_auth *a);
+
+/**
+ * True once, after a registration completes. The conversation then returns to
+ * the state before it, the server offers methods again, and the client logs in
+ * normally with what it just enrolled. This flag exists only so the client can
+ * say so to the player.
+ */
+bool nc_auth_registered(struct nc_auth *a);
+
+/****************************************************************
+ * Resuming later
+ *
+ * A registration waiting on an emailed code stays open for minutes. The
+ * connection survives that on netchan's keepalive. The player does not: they
+ * read the mail on a phone, or the game crashes, or the wifi drops. So the
+ * pending registration lives on the server under a token, and a fresh
+ * connection can present that token and carry on.
+ ****************************************************************/
+
+/** Copy out the resumption token, if the server issued one. Returns its
+ * length, or 0 if there is none to save. */
+size_t nc_auth_pending_token(const struct nc_auth *a, uint8_t *out, size_t len);
+
+/** Offer a saved token instead of starting the form over. Call before
+ * nc_auth_select. */
+void nc_auth_resume_pending(struct nc_auth *a, const uint8_t *tok, size_t len);
+
+/****************************************************************
+ * The server side
+ ****************************************************************/
+
+/* What a server callback decides about a submission. */
+enum {
+    NC_AUTH_IA_MORE = 0,  /* another form follows; fill *out */
+    NC_AUTH_IA_DONE,      /* the account exists, or the login succeeded */
+    NC_AUTH_IA_DENIED,    /* refuse, and end the conversation */
+    NC_AUTH_IA_WAIT,      /* the slow thing has been started; answer later */
+};
+
+struct nc_auth_ia_cb {
+    /**
+     * The opening form for the method the client selected. Return
+     * NC_AUTH_IA_MORE having filled *out, or NC_AUTH_IA_DENIED to refuse.
+     */
+    int (*begin)(void *ctx, unsigned method, struct nc_form *out);
+
+    /**
+     * A submission arrived. Read the answers with nc_auth_value_*, then
+     * decide. Filling *out on NC_AUTH_IA_MORE re-asks, with errors attached
+     * to whichever fields were wrong.
+     *
+     * The server may not block here either, and for a duller reason than the
+     * client: sending mail, reaching an SMS gateway, or asking an identity
+     * provider is slow, and one thread is serving every other connection.
+     * Return NC_AUTH_IA_WAIT to start the slow thing and answer later, and
+     * fill out->note with what to tell the player meanwhile.
+     */
+    int (*submit)(void *ctx, struct nc_auth *a, struct nc_form *out);
+
+    /**
+     * A client presented a resumption token. Return NC_AUTH_IA_MORE with the
+     * form it left off at, or NC_AUTH_IA_DENIED if the token has expired or
+     * was never issued. Optional: without it, tokens are refused.
+     */
+    int (*resume)(void *ctx, const uint8_t *tok, size_t len,
+                  struct nc_form *out);
+
+    void *ctx;
+};
+
+/**
+ * Read an answer by name, from inside a submit callback. The typed forms
+ * return the fallback when the field is absent or holds another type.
+ *
+ * The pointer nc_auth_value_text returns is into the server's answer buffer
+ * and is wiped when the conversation moves on, so a password must be checked
+ * or hashed here rather than saved for later.
+ */
+const char *nc_auth_value_text(const struct nc_auth *a, const char *name);
+int32_t     nc_auth_value_int(const struct nc_auth *a, const char *name,
+                              int32_t fallback);
+bool        nc_auth_value_bool(const struct nc_auth *a, const char *name,
+                               bool fallback);
+uint32_t    nc_auth_value_choice(const struct nc_auth *a, const char *name);
+
+/**
+ * Finish a submission that returned NC_AUTH_IA_WAIT: the mail went out, the
+ * gateway answered, the player clicked the link. verdict is one of
+ * NC_AUTH_IA_MORE, _DONE, or _DENIED, and form is read only when it is _MORE,
+ * which is the usual answer because the next thing to do is ask for the code
+ * that was just sent.
+ *
+ * Issuing a token here is what lets the client come back to this registration
+ * on another connection.
+ */
+void nc_auth_server_resume(struct nc_auth *a, int verdict,
+                           const struct nc_form *form,
+                           const uint8_t *token, size_t token_len);
+
+/**
+ * Register the interactive callbacks. The methods callback in
+ * nc_auth_server_cb decides which of the two bits to offer, and is asked again
+ * after a registration completes, because by then the answer has changed.
+ */
+void nc_auth_server_interactive(struct nc_auth *a,
+                                const struct nc_auth_ia_cb *cb);
+
+/****************************************************************
+ * Buffers
+ *
+ * A form arrives in a message the caller owns and may reuse the moment
+ * nc_auth_feed returns, and the conversation then suspends for a human. So the
+ * form has to be copied somewhere, and nc_auth neither allocates nor carries a
+ * buffer large enough to hold one. The caller supplies it, as the caller
+ * supplies everything else here.
+ *
+ * These extend the existing init calls rather than standing alone. A NULL
+ * buffer means the interactive method is unavailable on that side, which is
+ * the right default for a peer that only ever does publickey.
+ ****************************************************************/
+
+void nc_auth_client_buffer(struct nc_auth *a, void *buf, size_t len);
+void nc_auth_server_buffer(struct nc_auth *a, void *buf, size_t len);
+
+/****************************************************************
+ * Framing
+ *
+ * nc_auth is fed whole messages and knows nothing of what carries them, which
+ * is what lets a test drive two state machines in one process with no
+ * transport at all. That does not change. But a form no longer fits in a
+ * datagram, so auth moves to a reliable stream channel, and a stream hands
+ * back bytes rather than messages. Somebody has to write a length in front of
+ * each one and reassemble on the far side.
+ *
+ * Every caller would write the same twenty lines, and half of them would get
+ * the partial-read case wrong, so it lives here. It still knows nothing about
+ * netchan: bytes go in, messages come out.
+ ****************************************************************/
+
+/** Write msg into out with its 2-byte little-endian length in front. Returns
+ * the bytes written, or NC_AUTH_ERR if out is too small. */
+long nc_auth_frame(void *out, size_t outlen, const void *msg, size_t len);
+
+/** Reassembles messages from a byte stream, into a buffer the caller owns. */
+struct nc_auth_framer {
+    uint8_t *buf;
+    size_t   cap;
+    size_t   len;
+};
+
+void nc_auth_framer_init(struct nc_auth_framer *f, void *buf, size_t cap);
+
+/** Add bytes read from the channel. Returns NC_AUTH_OK, or NC_AUTH_ERR when
+ * the peer has sent more than the buffer holds, which ends the conversation:
+ * a message that does not fit was never going to be answered. */
+int nc_auth_framer_push(struct nc_auth_framer *f, const void *bytes, size_t n);
+
+/**
+ * Take the next whole message, if one has arrived. Returns its length and
+ * points *msg at it, or 0 when more bytes are needed. The message stays valid
+ * until the next push or next call, which is long enough to hand it straight
+ * to nc_auth_feed.
+ *
+ *     nc_auth_framer_push(&f, rx, n);
+ *     while ((mlen = nc_auth_framer_next(&f, &m)) > 0)
+ *         nc_auth_feed(&a, m, mlen);
+ */
+long nc_auth_framer_next(struct nc_auth_framer *f, const void **msg);
+
+/****************************************************************
+ * Messages
+ *
+ * Four added to the six in nc_auth.c:
+ *
+ *   MSG_IA_BEGIN   C->S  the selected method bit, and a token if resuming
+ *   MSG_IA_FORM    S->C  title, note, fields, errors
+ *   MSG_IA_SUBMIT  C->S  answers, by name
+ *   MSG_IA_WAIT    S->C  the slow thing has been started, and what to say
+ *
+ * The reply to a submission is another MSG_IA_FORM, or MSG_IA_WAIT, or the
+ * existing MSG_OK or MSG_FAIL. A MSG_IA_WAIT is followed later by whichever of
+ * those the server settles on. Registration finishing is MSG_METHODS again,
+ * which the client already handles.
+ *
+ * THE FIELD ENCODING
+ *
+ * A form is a variable run of variable records, and microser has no repeated
+ * field. Rather than teach the generator one, the IDL gains a `stringlist`
+ * type: a run of length-prefixed strings packed back to back inside one
+ * ordinary bytes field. No new wire type, no change to the tag space, and an
+ * older reader still skips it as bytes.
+ *
+ * Each string carries its own short textual key, so the record structure lives
+ * in the strings rather than in a second layer of binary tags:
+ *
+ *   t=text  n=email  l=Email address  max=64  req=1
+ *   t=password  n=pw  l=Password  min=8
+ *   t=choice  n=shard  l=Realm  o=Ashen Coast  o=Ravenholt
+ *   t=note  l=We sent a code to the address you gave.
+ *
+ * A record begins wherever `t=` appears, so the list is self-delimiting with
+ * no nesting and no separator to get wrong. Numbers are decimal text, which
+ * costs a few bytes and buys a form that is readable in a hex dump and maps
+ * almost line for line onto the config file the operator wrote it in. An error
+ * is `e=` inside the record it belongs to, so the separate errors array in
+ * struct nc_form is an API convenience that the encoder folds in.
+ *
+ * Answers come back the same way, `n=` and `v=`, with `v=` repeated for a
+ * multi-choice.
+ *
+ * NC_AUTH_MAX_MSG at 256 does not survive any of this. The real cap becomes
+ * the buffer the caller supplied above.
+ ****************************************************************/
+
+/****************************************************************
+ * Still open
+ *
+ *  - Whether nc_auth_select is needed at all, or whether the first
+ *    MSG_IA_BEGIN can simply be implied by the client answering METHODS.
+ *    Deferred.
+ *  - Whether the operator's form config file is a keystore format, which is
+ *    where the other five plain-text formats live, or stays entirely the
+ *    application's business. The struct works either way.
+ *  - Whether a waiting client may cancel, and what the server does with the
+ *    mail it has already sent when it does.
+ ****************************************************************/
+
+#endif /* NC_AUTH_INTERACTIVE_H */
