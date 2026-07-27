@@ -44,6 +44,7 @@ either.
 | `transport/` | `nc_udp` (sockets) and `nc_ws` (RFC 6455 codec) | `nc_addr.h` |
 | `crypto/` | `nc_crypto`, the encrypted transport decorator | monocypher |
 | `auth/` | `nc_auth` (login state machines), `keystore` (on-disk formats) | monocypher |
+| `discovery/` | `nc_beacon`, the packet that says a server is here | `idl/` |
 | `third_party/` | vendored monocypher | — |
 | `tests/` | the test suite | — |
 | `examples/` | runnable programs, plus a vendored event loop they use | — |

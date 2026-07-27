@@ -33,7 +33,7 @@ NETCHAN_TOP := $(ROOT)
 
 # idl comes before auth, tests, and examples because it exports
 # NETCHAN_IDL_INC and MICROSER_GEN, which they read at include time.
-SUBDIRS = third_party src transport crypto idl auth tests
+SUBDIRS = third_party src transport crypto idl auth discovery tests
 
 NETCHAN_EXAMPLES ?= 1
 ifeq ($(NETCHAN_EXAMPLES),1)

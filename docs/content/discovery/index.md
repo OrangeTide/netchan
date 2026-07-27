@@ -3,7 +3,7 @@ title: Finding servers
 weight: 13
 abstract: A beacon packet for the local network, and why anything a meta-server should trust goes over HTTPS instead.
 category: design
-draft: true
+draft: false
 ---
 
 Two problems arrive together because they have the same shape. A player on a
@@ -11,8 +11,10 @@ home network wants the list of games running in the house, and a public server
 wants a listing site to know it exists. Both are answered by a small packet sent
 into the dark, with no session behind it and no reply expected.
 
-Nothing implements this yet. It is a design, and the code it describes has not
-been written.
+`nc_beacon` implements this. `discovery/nc_beacon.c` builds and parses the
+packet, and `tests/test_nc_beacon.c` feeds it the cases that matter: a browser
+from last year reading a server from this year, and a packet from whoever
+happens to be on the link.
 
 ## Not on netchan
 

@@ -120,6 +120,16 @@ $(test_nc_auth_ia_RUN)
 endef
 TEST_TARGETS += test_nc_auth_ia
 
+# --- the discovery packet: built, parsed, and fed hostile input ---
+EXECUTABLES += test_nc_beacon
+test_nc_beacon_DIR := $(ROOT)
+test_nc_beacon_SRCS = test_nc_beacon.c
+test_nc_beacon_LIBS = nc_beacon
+define test_nc_beacon_TESTCMD
+$(test_nc_beacon_RUN)
+endef
+TEST_TARGETS += test_nc_beacon
+
 # --- the five on-disk formats, in a temporary directory ---
 EXECUTABLES += test_keystore
 test_keystore_DIR := $(ROOT)

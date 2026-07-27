@@ -13,7 +13,7 @@ to a fuzzer, each aimed at a class of defect the others do not reach.
 
 | Check | Command | Finds |
 |---|---|---|
-| Test suite | `make run-tests` | behaviour, on 18 binaries |
+| Test suite | `make run-tests` | behaviour, on 19 binaries |
 | Sanitizers | `make run-tests CFLAGS=...` | memory and UB at runtime |
 | Fuzzing | see below | parser crashes on hostile input |
 | Static analysis | `make analyze` | leaks and misuse on unexercised paths |
@@ -26,11 +26,12 @@ run takes; the linter is about consistency, not correctness.
 
 ## The test suite
 
-`make run-tests` builds and runs 18 binaries covering the protocol core,
+`make run-tests` builds and runs 19 binaries covering the protocol core,
 channels under loss and reordering, flow control, the WebSocket codec, the
 IDL codecs, the encrypted decorator, the login state machine and its
-interactive method, the on-disk key formats, the UDP transport over real
-loopback sockets, microchan, and the game example's network layer.
+interactive method, the discovery packet, the on-disk key formats, the UDP
+transport over real loopback sockets, microchan, and the game example's
+network layer.
 
 Most of it is socketless on purpose: the two halves run in one process with
 buffers between them, which is what lets the same tests run under wasm and on
@@ -122,7 +123,7 @@ unused rather than as buggy.
 
 As of 0.8.0, on this tree:
 
-- The suite passes 153 assertions across its 18 binaries, and
+- The suite passes 185 assertions across its 19 binaries, and
   `Makefile.simple` passes its 15.
 - Sanitizers are clean over the whole suite.
 - The fuzzer ran 522,458 executions at about 8,500/second and found no crash.
