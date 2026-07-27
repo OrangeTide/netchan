@@ -8,6 +8,34 @@ Releases are SemVer and are tagged `vMAJOR.MINOR.PATCH`. The tag is the
 release: GitHub serves a source snapshot for it, which is what
 `tools/vendor.sh` fetches.
 
+## 0.9.1 - 2026-07-27
+
+A packaging and tooling release. The wire protocol, the source API and the
+generated code for a valid schema are all unchanged from 0.9.0.
+
+Vendoring the `auth` layer from the 0.9.0 snapshot produces a tree that does
+not compile. If that is what you have, take this release instead. Nothing
+else about 0.9.0 needs replacing.
+
+### Fixed
+
+- `tools/vendor.sh` ships `idl/`, which holds `microser.h`. `auth` includes
+  that header, so a vendored `auth` referenced a file the vendoring never
+  copied and the build stopped at a missing include. `auth` now depends on
+  the new `idl` layer and the printed include paths list it.
+- `microser-gen.awk` rejects a variant label that is neither a number nor a
+  value of a declared enum. Such a label resolved to 0 in silence, so two
+  typos in one message emitted two `case 0:` labels and the mistake surfaced
+  as a compile error in generated code rather than as a rejected `.idl`.
+  Labels that collide on the same value are rejected for the same reason.
+
+### Added
+
+- A `disco` layer, covering `discovery/`. `nc_beacon.c` includes
+  `microser.h` too, so it depends on `idl` as `auth` does. The usage text
+  had described both layers since they were written. Only the tables that
+  implement them were missing.
+
 ## 0.9.0 - 2026-07-27
 
 netchan's own wire protocol is untouched, so the core still talks to 0.8.0.
