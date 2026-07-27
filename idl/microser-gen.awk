@@ -136,10 +136,18 @@ state == "case" && $1 == "end" { state = "msg"; next }
 (state == "case" || state == "var") && $0 ~ /:$/ {
     label = $1; sub(/:$/, "", label)
     mnv[nm]++; vi = mnv[nm]
+    # A bare number is a legitimate label. A name is only legitimate if some
+    # enum declared it: awk would otherwise turn the typo into 0, and several
+    # such labels in one message would collide on "case 0:" in the generated
+    # C. Record the failure and let END report it against the .idl.
     if (label in enum_lookup)
         vv[nm, vi] = enum_lookup[label]
-    else
+    else if (label ~ /^-?[0-9]+$/)
         vv[nm, vi] = label + 0
+    else {
+        vv[nm, vi] = 0
+        vunknown[nm, vi] = 1
+    }
     vlabel[nm, vi] = label
     vnf[nm, vi] = 0
     state = "var"
@@ -223,6 +231,22 @@ END {
                     fail(sprintf("message %s: \"%s\" and \"%s\" share field " \
                          "number %d", mn[i], af_name[i, j], af_name[i, k],
                          af_tag[i, j]))
+            }
+        }
+        # The variant labels become the case labels of the discriminant
+        # switch, so they answer to the same rule the field numbers do: each
+        # one has to mean something, and no two may mean the same thing.
+        for (j = 1; j <= mnv[i]; j++) {
+            if ((i, j) in vunknown)
+                fail(sprintf("message %s: variant label \"%s\" is neither a " \
+                     "number nor a value of any declared enum",
+                     mn[i], vlabel[i, j]))
+            for (k = j + 1; k <= mnv[i]; k++) {
+                if (!((i, j) in vunknown) && !((i, k) in vunknown) &&
+                    vv[i, j] == vv[i, k])
+                    fail(sprintf("message %s: variants \"%s\" and \"%s\" are " \
+                         "both %d", mn[i], vlabel[i, j], vlabel[i, k],
+                         vv[i, j]))
             }
         }
     }
