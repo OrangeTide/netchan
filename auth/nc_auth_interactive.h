@@ -58,11 +58,11 @@
 
 /*
  * The types are the ones a registration needs and no more. There is no hidden
- * field, because continuation state belongs in server memory keyed by the
- * transaction rather than echoed through a client that may edit it. There are
- * no buttons, because a game draws its own interface and already knows a form
- * has one submit action. There is no file or image field, because nothing here
- * wants transfer machinery.
+ * field, because continuation state is keyed by something the server already
+ * holds, the session or the resumption token, rather than echoed through a
+ * client that may edit it. There are no buttons, because a game draws its own
+ * interface and already knows a form has one submit action. There is no file or
+ * image field, because nothing here wants transfer machinery.
  */
 enum nc_form_type {
     NC_FF_TEXT = 1,   /* a line of UTF-8 */
@@ -434,6 +434,28 @@ long nc_auth_framer_next(struct nc_auth_framer *f, const void **msg);
  * out that they never had an account here registers from where they are,
  * without dropping the session and starting over.
  *
+ * ONE FORM IS OUTSTANDING AT A TIME
+ *
+ * A form goes out in reply to a submission, or once a wait has resolved, and at
+ * no other time. Nothing here can break that, because there is no call that
+ * sends a form: one is produced by returning NC_AUTH_IA_MORE from a callback,
+ * or by passing it to nc_auth_server_resume. A server author reaching for an
+ * unsolicited re-prompt will not find a function to do it with.
+ *
+ * That invariant is why a form and its answers need nothing to tie them
+ * together. The channel is reliable and ordered and the conversation is
+ * lock-step, so the only message a client may send after a form is the answer
+ * to that form, and there is never a second candidate. ssh's
+ * keyboard-interactive has run without a request id for twenty five years on
+ * the same reasoning.
+ *
+ * The failure this looks like it invites is a stale submission crossing a
+ * reissued form. Name-keyed answers already prevent it: nothing is positional,
+ * so a stale submission cannot land a value in the wrong field, and the server
+ * sees names it did not ask for and rejects it. If an identifier is ever needed
+ * anyway, a reader skips a tag it has not heard of, so it can be added without
+ * breaking an older peer.
+ *
  * THE FIELD ENCODING
  *
  * A form is a variable run of variable records, and microser has no repeated
@@ -467,11 +489,6 @@ long nc_auth_framer_next(struct nc_auth_framer *f, const void **msg);
 /****************************************************************
  * Still open
  *
- *  - The transaction id. The design leans on one twice, once as where a form
- *    and its answers are tied together and once as the reason there are no
- *    hidden fields, and nothing here declares it. Either it is explicit in
- *    MSG_IA_FORM and MSG_IA_SUBMIT, or the reliable ordered channel makes it
- *    redundant and the argument against hidden fields has to be made again.
  *  - Whether the operator's form config file is a keystore format, which is
  *    where the other five plain-text formats live, or stays entirely the
  *    application's business. The struct works either way.

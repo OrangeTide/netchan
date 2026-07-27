@@ -115,7 +115,7 @@ an account chooses it, and the interactive loop begins.
     client -> HELLO        "I claim to be <user>", or no name at all
     server -> METHODS      "publickey, password, register"
     client -> BEGIN        chooses to register rather than log in
-    server -> FORM         a field list and a transaction id
+    server -> FORM         a field list
     client -> SUBMIT       values for those fields
     server -> FORM         again, with per-field errors, or asking for more
     client -> SUBMIT
@@ -132,6 +132,30 @@ when it hears back.
 
 The loop is not bounded by a fixed number of rounds. Email confirmation, a
 second factor, and a corrected typo are all just another turn.
+
+### One form is outstanding at a time
+
+A server may send a form in reply to a submission, or once a wait has resolved,
+and at no other time. That is the invariant the rest of the exchange rests on,
+and it is worth stating because a future server author will otherwise reach for
+an unsolicited re-prompt and quietly break it.
+
+What it buys is that a form and its answers need nothing to tie them together.
+The channel is reliable and ordered, the conversation is lock-step, and the only
+message a client may send after a form is the answer to that form. There is
+never a second candidate, so there is no identifier to carry and no bookkeeping
+to get wrong. ssh's keyboard-interactive has run this arrangement without a
+request id for twenty five years.
+
+The failure this appears to invite is a stale submission, where the server moves
+on while answers to the previous form are still in flight. Name-keyed answers
+already prevent it. Every value travels as its field's name and a value rather
+than as a position, so a stale submission cannot land anything in the wrong
+field. The server sees names it did not ask for and rejects the submission,
+which is the right outcome.
+
+If an identifier is ever genuinely needed, an older reader skips a tag it has
+not heard of, so adding one later costs nothing.
 
 ### Waiting is a state of its own
 
@@ -245,9 +269,10 @@ out a sensible box without guessing.
 Four omissions are deliberate.
 
 **No hidden fields.** They exist in HTML because HTTP is stateless and the
-browser has to carry server state through the round trip. netchan has a session
-and a transaction id, so continuation state lives in server memory keyed by the
-transaction. A hidden field would only invite a server to trust data it handed
+browser has to carry server state through the round trip. Here the state is
+keyed by something the server already holds, the session while the conversation
+is live and the resumption token across a disconnect, so it never has to leave
+the building. A hidden field would only invite a server to trust data it handed
 to an untrusted client and got back.
 
 **No buttons.** Submit and reset are affordances of a document renderer. A game
