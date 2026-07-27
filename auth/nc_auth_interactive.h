@@ -231,12 +231,31 @@ const struct nc_form *nc_auth_form(const struct nc_auth *a);
  * the server never has to trust the order it gets back. Entries for NOTE and
  * LINK fields are ignored.
  *
- * Passing NULL abandons the conversation, which is the cancel button.
- *
  * As with nc_auth_supply_password, nothing is retained: a PASSWORD answer is
  * copied into the outgoing message and the copy is wiped.
  */
 void nc_auth_submit(struct nc_auth *a, const struct nc_form_value *vals, int n);
+
+/**
+ * Abandon the interactive method. Works with a form on screen and works during
+ * a wait, which is where a player who has given up on an email actually
+ * presses it.
+ *
+ * This abandons the method, not the login. The conversation returns to the
+ * point where the server offered methods, exactly as a completed registration
+ * does, so a player who changed their mind can log in with the account they
+ * already had without reconnecting. To abandon the login itself, answer
+ * NC_AUTH_NEED_METHOD with 0.
+ *
+ * A no-op when no interactive method is running, and harmless twice.
+ *
+ * Nothing here is load bearing. A client that crashes sends no cancel, so a
+ * server must reach the same end state without one. Cancelling only makes it
+ * immediate, which matters because the slot it frees is capped per address:
+ * the player who changed their mind stops holding one, and a griefer opening
+ * registrations to abandon them is left paying the expiry on every slot.
+ */
+void nc_auth_cancel(struct nc_auth *a);
 
 /**
  * What the client is waiting on an external service to finish, as the server
@@ -311,6 +330,20 @@ struct nc_auth_ia_cb {
     int (*resume)(void *ctx, const uint8_t *tok, size_t len,
                   struct nc_form *out);
 
+    /**
+     * An interactive method that was running has ended without finishing,
+     * because the client cancelled or because the application called
+     * nc_auth_clear. Drop whatever was pending and invalidate its token.
+     *
+     * Invalidating is the part that matters. Mail already sent cannot be
+     * recalled, so a player who cancels and then clicks the link that arrived
+     * anyway must find it dead.
+     *
+     * Fires at most once per conversation, and not at all if nothing was
+     * running. Optional.
+     */
+    void (*cancelled)(void *ctx);
+
     void *ctx;
 };
 
@@ -369,6 +402,50 @@ void nc_auth_client_buffer(struct nc_auth *a, void *buf, size_t len);
 void nc_auth_server_buffer(struct nc_auth *a, void *buf, size_t len);
 
 /****************************************************************
+ * Ending, and cleaning up
+ *
+ * An interactive conversation ends without finishing in three ways, and all
+ * three have to converge on the same cleanup or a half-made account outlives
+ * the attempt that made it.
+ *
+ *   cancel   the client said so. Immediate, and never guaranteed.
+ *   close    the connection went away: a crash, a lost network, a denial, or
+ *            the application tearing the session down.
+ *   expiry   the pending token's clock ran out, long after the connection it
+ *            was issued on stopped existing.
+ *
+ * The first two arrive through nc_auth and both fire the cancelled callback.
+ * The third cannot: by then there is no conversation to fire anything, and the
+ * pending row outlives every struct here. Expiry is the application's own
+ * clock over its own store, and this file has nothing to say about it beyond
+ * insisting it exists. A server that only cleans up on cancel leaks every
+ * registration a player ever walked away from.
+ *
+ * WHAT HAS TO BE WIPED
+ *
+ * nc_auth's existing discipline is that it never retains a secret: a password
+ * is copied into the outgoing message and the copy is wiped straight away.
+ * The buffers above widen the surface that promise has to cover. A submitted
+ * form sits in the server's buffer with a plaintext password in it, and the
+ * client's buffer holds the form it is answering. Neither can be left behind
+ * for the next conversation to inherit.
+ ****************************************************************/
+
+/**
+ * End the conversation and wipe it. Wipes the struct and both buffers rather
+ * than resetting their lengths, fires the cancelled callback if an interactive
+ * method was running, and leaves a struct that is safe to discard.
+ *
+ * Call it when the session goes away, however it goes away. Safe on a struct
+ * that never started, safe twice, and the callback still fires only once.
+ *
+ * What it cannot reach is the transport's own copy of the last message sent.
+ * A password that went out through the send callback is in whatever buffer the
+ * caller handed the socket, and clearing that is the caller's to do.
+ */
+void nc_auth_clear(struct nc_auth *a);
+
+/****************************************************************
  * Framing
  *
  * nc_auth is fed whole messages and knows nothing of what carries them, which
@@ -422,6 +499,12 @@ long nc_auth_framer_next(struct nc_auth_framer *f, const void **msg);
  *   MSG_IA_FORM    S->C  title, note, fields, errors
  *   MSG_IA_SUBMIT  C->S  answers, by name
  *   MSG_IA_WAIT    S->C  the slow thing has been started, and what to say
+ *   MSG_IA_CANCEL  C->S  abandon the method
+ *
+ * A cancel is answered with MSG_METHODS, the same reply a finished
+ * registration gets, because both land in the same place. A cancel can cross a
+ * form already in flight, so a client that has sent one ignores everything
+ * until those methods arrive.
  *
  * The reply to a submission is another MSG_IA_FORM, or MSG_IA_WAIT, or the
  * existing MSG_OK or MSG_FAIL. A MSG_IA_WAIT is followed later by whichever of
@@ -441,6 +524,12 @@ long nc_auth_framer_next(struct nc_auth_framer *f, const void **msg);
  * sends a form: one is produced by returning NC_AUTH_IA_MORE from a callback,
  * or by passing it to nc_auth_server_resume. A server author reaching for an
  * unsolicited re-prompt will not find a function to do it with.
+ *
+ * The rule governs forms and nothing else. MSG_FAIL is exempt: a server may
+ * refuse whenever it decides it is done, including while a form is
+ * outstanding, because otherwise a server that wants to stop serving a parked
+ * registration has no way to say so. Read as "the server never speaks
+ * unsolicited" the invariant would be both false and unimplementable.
  *
  * That invariant is why a form and its answers need nothing to tie them
  * together. The channel is reliable and ordered and the conversation is
@@ -487,13 +576,54 @@ long nc_auth_framer_next(struct nc_auth_framer *f, const void **msg);
  ****************************************************************/
 
 /****************************************************************
+ * What must be tested
+ *
+ * tests/test_nc_auth.c already runs both state machines in one process with a
+ * queue between them, and every case below fits that harness: no sockets, no
+ * timing, no second process. The ordinary paths will get written without being
+ * asked for. These are the ones that will not.
+ *
+ * Cancelling
+ *   1. Cancel with a form outstanding. Both ends land back at the method
+ *      offer, methods() runs again, cancelled fires once.
+ *   2. Cancel during a wait, which is where a player actually presses it.
+ *   3. Cancel crossing a form already in flight. The client ignores the form
+ *      and still lands at the offer, and neither end keeps state.
+ *   4. Cancel, then log in on the same session with an account that already
+ *      existed. Abandoning the method must not have cost the login.
+ *   5. Cancel with nothing running, and cancel twice. No-ops, one callback at
+ *      most.
+ *
+ * Cleaning up
+ *   6. nc_auth_clear mid-registration fires cancelled; a second clear fires
+ *      nothing.
+ *   7. nc_auth_clear on a struct that never started.
+ *   8. After clear, the submitted password appears nowhere in the struct or in
+ *      the supplied buffer. Search the bytes rather than trusting a length
+ *      field to have been reset.
+ *   9. A denied conversation wipes as thoroughly as a cancelled one. Denial is
+ *      the path an attacker can drive, so it is the one worth checking.
+ *
+ * Expiring
+ *  10. Resuming with a token the server has already dropped. Denied, no crash,
+ *      nothing resurrected.
+ *  11. A cancelled registration's token is dead. This is the player who
+ *      cancels and then clicks the link that arrived by mail anyway.
+ *  12. Cancelling frees the pending slot at once, so the per-address cap
+ *      recovers without waiting for a clock.
+ *
+ * Invariants
+ *  13. A submission crossing a reissued form is rejected on the names it
+ *      carries, never misbound onto the new form's fields.
+ *  14. MSG_FAIL arriving while a form is outstanding is accepted.
+ ****************************************************************/
+
+/****************************************************************
  * Still open
  *
  *  - Whether the operator's form config file is a keystore format, which is
  *    where the other five plain-text formats live, or stays entirely the
  *    application's business. The struct works either way.
- *  - Whether a waiting client may cancel, and what the server does with the
- *    mail it has already sent when it does.
  ****************************************************************/
 
 #endif /* NC_AUTH_INTERACTIVE_H */

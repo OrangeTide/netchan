@@ -157,6 +157,37 @@ which is the right outcome.
 If an identifier is ever genuinely needed, an older reader skips a tag it has
 not heard of, so adding one later costs nothing.
 
+The rule governs forms and nothing else. `DENIED` is exempt, and a server may
+send it whenever it decides it is done, including while a form is outstanding.
+Otherwise a server that wants to stop serving a parked registration has no way
+to say so. Read as "the server never speaks unsolicited" the invariant would be
+both false and unimplementable.
+
+### Cancelling abandons the method, not the login
+
+A player who clicked "create account", saw a form asking for an email address,
+and changed their mind should land back on the login screen with the account
+they already had. So `CANCEL` returns the conversation to the point where the
+server offered methods, which is exactly where a completed registration returns
+it. Registration has one exit, and whether it succeeded or was abandoned makes
+no difference to where the conversation resumes.
+
+That scope follows what `nc_auth` already does. Supplying no key means "move on
+to the next method" rather than "give up", and cancelling a form means the same.
+Giving up entirely is a different answer, given when the server asks which
+method to use.
+
+Nothing depends on a cancel arriving. A client that crashes sends none, so the
+server has to reach the same end state without one, which means expiry already
+covers every case cancellation covers. What cancelling buys is speed, and speed
+matters here because the slot it frees is capped per address. The player who
+changed their mind stops holding one immediately, and the griefer who opens
+registrations in order to abandon them is left paying the full expiry on each.
+
+A cancel can cross a form already in flight, since the server may send one the
+moment a wait resolves. A client that has cancelled ignores whatever arrives
+until the method offer does.
+
 ### Waiting is a state of its own
 
 Between "here is my address" and "here is the code from the mail" the client has
@@ -352,6 +383,26 @@ by a token handed to the client, and a fresh connection can present that token
 and carry on where it left off. The token expires, which is where a server sets
 how long it is willing to wait, and the number of pending registrations from one
 address is capped, so a stranger cannot hold a hundred of them open.
+
+A registration that ends without finishing does so in three ways, and all three
+have to converge on the same cleanup or a half-made account outlives the attempt
+that made it. The client cancels. The connection goes away, through a crash, a
+lost network, a refusal, or the application tearing the session down. Or the
+token's clock runs out, long after the connection it was issued on stopped
+existing.
+
+The first two arrive through `nc_auth`, which tells the application to drop what
+was pending. The third cannot, because by then there is no conversation left to
+tell anyone anything. Expiry is the server's own clock over its own store, and
+netchan has nothing to say about it beyond insisting it exists: a server that
+cleans up only on cancel leaks every registration a player ever walked away
+from.
+
+Invalidating the token is the part that matters most. Mail already sent cannot
+be recalled, so a player who cancels and then clicks the link that arrived
+anyway has to find it dead. And whichever path ends the conversation, the
+submitted form is wiped rather than merely forgotten, because it has a plaintext
+password sitting in it.
 
 A one-time login token is a bearer credential, for the case where a player logs
 in through a link in an email or a code sent by SMS. Holding it is being the
