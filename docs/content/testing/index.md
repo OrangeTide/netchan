@@ -13,7 +13,7 @@ to a fuzzer, each aimed at a class of defect the others do not reach.
 
 | Check | Command | Finds |
 |---|---|---|
-| Test suite | `make run-tests` | behaviour, on 19 binaries |
+| Test suite | `make run-tests` | behaviour, on 20 binaries |
 | Sanitizers | `make run-tests CFLAGS=...` | memory and UB at runtime |
 | Fuzzing | see below | parser crashes on hostile input |
 | Static analysis | `make analyze` | leaks and misuse on unexercised paths |
@@ -26,7 +26,7 @@ run takes; the linter is about consistency, not correctness.
 
 ## The test suite
 
-`make run-tests` builds and runs 19 binaries covering the protocol core,
+`make run-tests` builds and runs 20 binaries covering the protocol core,
 channels under loss and reordering, flow control, the WebSocket codec, the
 IDL codecs, the encrypted decorator, the login state machine and its
 interactive method, the discovery packet, the on-disk key formats, the UDP
@@ -35,7 +35,10 @@ network layer.
 
 Most of it is socketless on purpose: the two halves run in one process with
 buffers between them, which is what lets the same tests run under wasm and on
-16-bit DOS. `nc_udp_test` is the exception and needs real sockets.
+16-bit DOS. `nc_udp_test` is the exception and needs real sockets, and two
+examples are driven end to end by shell: the chat server through a client
+disconnecting, and the beacon demo through a server announcing itself and
+being found.
 
 `make -f Makefile.simple check` is a second, smaller path: it builds the core
 with nothing but `cc` and runs 15 checks, which is how the no-dependencies
@@ -123,7 +126,7 @@ unused rather than as buggy.
 
 As of 0.8.0, on this tree:
 
-- The suite passes 185 assertions across its 19 binaries, and
+- The suite passes 186 assertions across its 20 binaries, and
   `Makefile.simple` passes its 15.
 - Sanitizers are clean over the whole suite.
 - The fuzzer ran 522,458 executions at about 8,500/second and found no crash.

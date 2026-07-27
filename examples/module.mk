@@ -18,7 +18,9 @@
 #   echo/        an encrypted session: netchan over nc_crypto, no login.
 #   auth/        the full stack, with host keys, known_hosts, and an
 #                ssh-shaped login.
+#   discovery/   nc_beacon with sockets under it: a server announcing itself
+#                on the LAN and a browser finding it.
 
 ROOT := $(dir $(lastword $(MAKEFILE_LIST)))
 
-SUBDIRS = iox common chat typed ws_gateway echo auth
+SUBDIRS = iox common chat typed ws_gateway echo auth discovery
