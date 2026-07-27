@@ -7,8 +7,35 @@ single vendored `GNUmakefile`.
 
 It is meant to be vendored. Copy the directories you want into your tree and
 you have a protocol core, a UDP backend, transport encryption, and
-authentication, each of which you can take or leave. See
-[VENDORING.md](VENDORING.md).
+authentication, each of which you can take or leave.
+
+## Getting It
+
+Releases are git tags, and GitHub serves a source snapshot for each one.
+`tools/vendor.sh` fetches that snapshot, copies the layers you name plus the
+ones they depend on, and writes a `VENDORED.md` recording what it took. With
+no `--version` it asks GitHub which release is newest, so there is nothing to
+look up and nothing to edit:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/OrangeTide/netchan/main/tools/vendor.sh \
+  | sh -s -- --layer auth --dest third_party/netchan
+```
+
+For a repeatable build, name a release and take the script from that same tag.
+A tag is an immutable commit, so the copier is the one that shipped with the
+release, and neither it nor what it fetches can change under you:
+
+```sh
+TAG=v0.9.1    # whichever release you want
+curl -fsSL "https://raw.githubusercontent.com/OrangeTide/netchan/$TAG/tools/vendor.sh" \
+  | sh -s -- --version "$TAG" --layer auth --dest third_party/netchan
+```
+
+`--list` shows what each layer copies, `--help` shows the rest, and
+[VENDORING.md](VENDORING.md) has the layer table, the environment variables
+for a fork or a mirror, and the download-then-read form for anyone who would
+rather not pipe a script into a shell.
 
 ## The Idea
 
@@ -277,12 +304,8 @@ compatibility holds within a minor version and no further; see
 [CHANGELOG.md](CHANGELOG.md). The one break so far is `nc_crypto`'s HELLO
 growing from 33 to 65 bytes when identity keys arrived.
 
-To take it into your own tree, see [VENDORING.md](VENDORING.md), or take the
-latest release with:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/OrangeTide/netchan/main/tools/vendor.sh | sh
-```
+To take it into your own tree, see [Getting It](#getting-it) above, or
+[VENDORING.md](VENDORING.md) for the layer table and the rest of the options.
 
 ## Provenance
 
