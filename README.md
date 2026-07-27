@@ -94,6 +94,11 @@ and an API reference generated from `src/netchan.h`. Build it locally with
 `make -C docs serve`. Every page carries the version it was built from, which
 is the release tag on a tagged build and the tag plus the commit otherwise.
 
+The published site is the last release, not the tip: a push builds and checks
+the site but only a `v*` tag replaces it. That keeps the address people cite
+pointing at a version that exists, at the cost of a typo fix waiting for the
+next tag.
+
 The suite is clean under AddressSanitizer and UndefinedBehaviorSanitizer:
 
 ```sh

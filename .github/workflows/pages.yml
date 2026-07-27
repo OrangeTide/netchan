@@ -1,13 +1,19 @@
 name: Documentation
 
 # Builds the documentation site on every push and pull request so a broken
-# page, a dead link, or a stale API symbol fails CI. Only a push to main
-# deploys; a pull request builds and uploads nothing, so a fork cannot
-# publish.
+# page, a dead link, or a stale API symbol fails CI. Only a v* tag deploys.
+#
+# The site is a release artifact: every page carries the version it was built
+# from, so publishing on each push would put a -dev build at the address
+# people cite. Tagging is what replaces the live site, which also means a typo
+# fix stays invisible until the next tag. Tag freely.
+#
+# A pull request builds and uploads nothing, so a fork cannot publish.
 
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -58,7 +64,7 @@ jobs:
   deploy:
     name: deploy to Pages
     needs: build
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
