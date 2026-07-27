@@ -132,7 +132,7 @@ unused rather than as buggy.
 
 ## Results
 
-As of 0.8.0, on this tree:
+As of 0.9.0, on this tree:
 
 - The suite passes 191 assertions across its 20 binaries, and
   `Makefile.simple` passes its 15.

@@ -8,6 +8,82 @@ Releases are SemVer and are tagged `vMAJOR.MINOR.PATCH`. The tag is the
 release: GitHub serves a source snapshot for it, which is what
 `tools/vendor.sh` fetches.
 
+## 0.9.0 - 2026-07-27
+
+netchan's own wire protocol is untouched, so the core still talks to 0.8.0.
+`nc_auth` gains five message types for a third login method, and the minor
+version moves for that and for the source API.
+
+Old and new peers still meet, with one limit. An 0.8.0 client ignores a method
+bit it does not know, so it logs in normally against a server that still
+offers publickey or password. It cannot register, and a server offering
+registration and nothing else leaves it with no method it understands.
+
+### Added
+
+- A third `nc_auth` method, interactive, in `auth/nc_auth_ia.c`. The server
+  sends a form, the client renders it, the answers come back, and the loop
+  repeats until the server is satisfied. One method rather than one per
+  scheme, following ssh's keyboard-interactive: registration, an emailed
+  code, a one-time token and a second factor all ride it, and nothing in the
+  library learns what any of them mean.
+- `struct nc_form` and `struct nc_form_field`, a self-describing form of typed
+  fields: text, password, email, integer, phone, bool, choice, note and link.
+  A form is configuration a server operator writes, so a client renders one it
+  was never compiled against. Top to bottom, one field per row, is all the
+  layout it needs.
+- `nc_auth_supply_method`, `nc_auth_form`, `nc_auth_submit`, `nc_auth_cancel`,
+  `nc_auth_waiting`, `nc_auth_registered`, `nc_auth_offered`, and the pending
+  token calls, for the client. `nc_auth_server_interactive`,
+  `nc_auth_server_resume`, `nc_auth_server_token` and the `nc_auth_value_*`
+  accessors, for the server.
+- `nc_auth_clear`, which wipes the conversation and its buffer and tells the
+  application to drop a half-finished registration. Call it whenever a session
+  ends, however it ends.
+- `nc_auth_frame` and `struct nc_auth_framer`, for a carrier that hands back
+  bytes rather than messages. netchan's reliable channel preserves message
+  boundaries and needs none of it; a TCP socket or a WebSocket does.
+- `discovery/nc_beacon`, a UDP packet that says a server is here, for finding
+  games on a local network. Builds and parses, and does nothing else: no
+  socket, no timer, no address. Nothing in it is authenticated and nothing can
+  be, which the header says at length.
+- `examples/discovery/beacon_demo`, announcing and browsing over real sockets,
+  including the two rules that keep a probe from being a reflector.
+- `auth_client --register` and a registration form in `auth_server`, so the
+  interactive method runs over a socket rather than only in a test.
+- `prompt_reader_begin_visible`, for a form field that is not a secret.
+- Documentation: [registration](docs/content/registration/) and
+  [finding servers](docs/content/discovery/), both design pages that record
+  what was rejected as well as what was built.
+
+### Changed
+
+- `NC_AUTH_NEED_*` gains `NC_AUTH_NEED_METHOD` and `NC_AUTH_NEED_FORM`. A
+  `switch` over the enum has two new cases; a client that only does publickey
+  never sees either, because the conversation suspends for a choice only when
+  a server offers to make an account.
+- `struct nc_auth` grows the interactive state. It is a public struct, so a
+  caller that embeds one by value gets a bigger object.
+- `idl` moves ahead of `auth` in `SUBDIRS`, since `nc_auth_ia.c` includes
+  `microser.h` and needs `NETCHAN_IDL_INC` set at include time.
+
+### Fixed
+
+- `nc_auth` accepted a second form while one was still outstanding, which
+  overwrites the buffer an application is part way through rendering and makes
+  it submit one form's answers under another form's field names. The invariant
+  was documented and unenforced; it is enforced now.
+
+### Known gaps
+
+- `nc_beacon_parse` and the form decoder both read from unauthenticated peers
+  and neither is fuzzed. They are better candidates than `netchan_feed`, which
+  is the only harness that exists.
+- A meta-server announce is deliberately not signed. A signature proves a
+  packet came from a key, not that the sender holds the address in it, and the
+  listing site has to connect back regardless. Use HTTPS where server
+  authenticity matters.
+
 ## 0.8.0 - 2026-07-26
 
 The wire protocol is untouched. Everything here is source level, so a peer
