@@ -46,6 +46,11 @@ struct prompt_reader {
 /* Draw the prompt and turn echo off. */
 void prompt_reader_begin(struct prompt_reader *pr, const char *prompt);
 
+/* The same with echo left alone, for a field that is not a secret. A form
+ * asks for an account name and a password in the same breath, and typing a
+ * name blind is a good way to register a typo. */
+void prompt_reader_begin_visible(struct prompt_reader *pr, const char *prompt);
+
 /* Consume one byte. Returns 1 when the line is complete and NUL terminated
  * in pr->buf, 0 when more is needed, PROMPT_ERR on EOF or error. */
 int prompt_reader_feed(struct prompt_reader *pr, int fd);

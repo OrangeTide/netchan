@@ -32,6 +32,13 @@ struct client {
     int               asking;           /* NC_AUTH_NEED_* being collected */
     int               denied;
     struct prompt_reader reader;
+
+    /* Filling in a registration form, one field per prompt. */
+    int               want_register;    /* --register was given */
+    const struct nc_form *form;
+    int               field;            /* the field being answered */
+    struct nc_form_value vals[NC_FORM_MAX_FIELDS];
+    char              answer[NC_FORM_MAX_FIELDS][NC_FORM_MAX_VALUE];
 };
 
 /****************************************************************
@@ -105,24 +112,45 @@ verify_host(void *ctx, const uint8_t *peer_pk)
 static void on_secret_typed(struct iox_loop *loop, int fd,
                             unsigned events, void *arg);
 
-/* Start collecting a hidden line. what_for says which supply call the
- * completed line belongs to. */
+/* Whatever we cannot ask for, we decline, and the login moves on to whatever
+ * is left. Giving up on a form means giving up on registering, not on the
+ * session: the method offer comes round again. */
 static void
-ask_secret(struct client *c, int what_for, const char *prompt)
+decline(struct client *c, int what_for)
+{
+    if (what_for == NC_AUTH_NEED_KEY)
+        auth_link_supply_key(c->link, NULL, NULL);
+    else if (what_for == NC_AUTH_NEED_PASSWORD)
+        auth_link_supply_password(c->link, NULL);
+    else if (what_for == NC_AUTH_NEED_FORM)
+        auth_link_cancel(c->link);
+    else
+        auth_link_supply_method(c->link, 0);
+}
+
+/* Start collecting a line. what_for says which supply call the completed line
+ * belongs to; hide is off for a form field that is not a secret. */
+static void
+ask_line(struct client *c, int what_for, const char *prompt, int hide)
 {
     c->asking = what_for;
-    prompt_reader_begin(&c->reader, prompt);
+    if (hide)
+        prompt_reader_begin(&c->reader, prompt);
+    else
+        prompt_reader_begin_visible(&c->reader, prompt);
     if (iox_fd_add(c->loop, STDIN_FILENO, IOX_READ, on_secret_typed, c) != 0) {
         prompt_reader_end(&c->reader);
         c->asking = 0;
-        /* Cannot ask, so decline and let the login try something else. */
-        if (what_for == NC_AUTH_NEED_KEY)
-            auth_link_supply_key(c->link, NULL, NULL);
-        else
-            auth_link_supply_password(c->link, NULL);
+        decline(c, what_for);
         return;
     }
     c->stdin_watched = 1;
+}
+
+static void
+ask_secret(struct client *c, int what_for, const char *prompt)
+{
+    ask_line(c, what_for, prompt, 1);
 }
 
 /* Load the key file and hand it over, prompting first if it is sealed. */
@@ -148,6 +176,93 @@ supply_key_from_file(struct client *c)
     memset(sk, 0, sizeof(sk));
 }
 
+/****************************************************************
+ * Filling in whatever form the server sent
+ *
+ * The client was compiled without knowing what this server would ask for, so
+ * it renders what arrives and nothing else. Top to bottom, one field per row,
+ * in the order the form lists them, which is all the layout a form needs.
+ ****************************************************************/
+
+/* Move to the next field that takes an answer, or submit when there are none
+ * left. NOTE and LINK are shown rather than asked. */
+static void
+form_next(struct client *c)
+{
+    char prompt[256];
+
+    while (c->form && c->field < (int)c->form->nfields) {
+        const struct nc_form_field *f = &c->form->fields[c->field];
+
+        if (f->type == NC_FF_NOTE) {
+            printf("  %s\n", f->value ? f->value : (f->label ? f->label : ""));
+            c->field++;
+            continue;
+        }
+        if (f->type == NC_FF_LINK) {
+            printf("  %s: %s\n", f->label ? f->label : "open",
+                   f->value ? f->value : "");
+            c->field++;
+            continue;
+        }
+
+        /* A field the server marked as wrong last time says so, beside
+         * itself, which is the whole point of carrying the message there. */
+        if (f->error)
+            printf("  ! %s\n", f->error);
+
+        snprintf(prompt, sizeof(prompt), "  %s%s: ",
+                 f->label ? f->label : (f->name ? f->name : "?"),
+                 (f->flags & NC_FF_REQUIRED) ? "" : " (optional)");
+        fflush(stdout);
+        ask_line(c, NC_AUTH_NEED_FORM, prompt,
+                 f->type == NC_FF_PASSWORD);
+        return;
+    }
+
+    auth_link_submit(c->link, c->vals, c->form ? c->form->nfields : 0);
+    c->form = NULL;
+}
+
+/* A form arrived: draw its heading, then start asking. */
+static void
+form_begin(struct client *c)
+{
+    c->form = auth_link_form(c->link);
+    if (!c->form) {
+        auth_link_cancel(c->link);
+        return;
+    }
+    memset(c->vals, 0, sizeof(c->vals));
+    memset(c->answer, 0, sizeof(c->answer));
+    c->field = 0;
+
+    printf("\n%s\n", c->form->title ? c->form->title : "Registration");
+    if (c->form->note)
+        printf("  %s\n", c->form->note);
+    form_next(c);
+}
+
+/* One field answered. Keep the text where it will outlive the reader, point
+ * the value at it, and move on. */
+static void
+form_answer(struct client *c)
+{
+    int i = c->field;
+
+    if (i >= 0 && i < NC_FORM_MAX_FIELDS && c->form &&
+        i < (int)c->form->nfields) {
+        snprintf(c->answer[i], sizeof(c->answer[i]), "%s", c->reader.buf);
+        c->vals[i].text = c->answer[i];
+        c->vals[i].on = c->answer[i][0] == 'y' || c->answer[i][0] == '1';
+        c->vals[i].number = atoi(c->answer[i]);
+        c->vals[i].choice = (uint32_t)atoi(c->answer[i]);
+    }
+    prompt_reader_end(&c->reader);
+    c->field++;
+    form_next(c);
+}
+
 /* A complete hidden line has arrived. */
 static void
 secret_complete(struct client *c)
@@ -159,6 +274,11 @@ secret_complete(struct client *c)
     iox_fd_remove(c->loop, STDIN_FILENO);
     c->stdin_watched = 0;
     c->asking = 0;
+
+    if (what == NC_AUTH_NEED_FORM) {
+        form_answer(c);
+        return;
+    }
 
     if (what == NC_AUTH_NEED_PASSWORD) {
         auth_link_supply_password(c->link, c->reader.buf);
@@ -200,10 +320,8 @@ on_secret_typed(struct iox_loop *loop, int fd, unsigned events, void *arg)
         c->stdin_watched = 0;
         c->asking = 0;
         prompt_reader_end(&c->reader);
-        if (what == NC_AUTH_NEED_KEY)
-            auth_link_supply_key(c->link, NULL, NULL);
-        else
-            auth_link_supply_password(c->link, NULL);
+        c->form = NULL;
+        decline(c, what);
         return;
     }
     secret_complete(c);
@@ -216,6 +334,29 @@ on_need(struct auth_link *al, int what, void *user)
     char prompt[160];
 
     (void)al;
+
+    /*
+     * Which method to use is the one question the machine cannot answer for
+     * itself. Registering is an intent, not a fallback: nothing about a
+     * failed login implies the player wanted a new account instead.
+     */
+    if (what == NC_AUTH_NEED_METHOD) {
+        if (c->want_register) {
+            c->want_register = 0;       /* once; then log in with it */
+            printf("* creating an account on this server\n");
+            auth_link_supply_method(c->link, NC_AUTH_M_REGISTER);
+        } else {
+            auth_link_supply_method(c->link,
+                                    NC_AUTH_M_PUBKEY | NC_AUTH_M_PASSWORD);
+        }
+        return;
+    }
+
+    if (what == NC_AUTH_NEED_FORM) {
+        form_begin(c);
+        return;
+    }
+
     if (what == NC_AUTH_NEED_KEY) {
         supply_key_from_file(c);
         return;
@@ -360,7 +501,8 @@ usage(void)
 {
     fprintf(stderr,
         "usage: auth_client [--host H] [--port N] [--user NAME]\n"
-        "                   [--key F] [--known-hosts F] [--password]\n");
+        "                   [--key F] [--known-hosts F] [--password]\n"
+        "                   [--register]\n");
     exit(2);
 }
 
@@ -394,6 +536,8 @@ main(int argc, char **argv)
             c.keyfile = argv[++i];
         else if (strcmp(argv[i], "--known-hosts") == 0 && i + 1 < argc)
             c.known_hosts = argv[++i];
+        else if (strcmp(argv[i], "--register") == 0)
+            c.want_register = 1;
         else if (strcmp(argv[i], "--password") == 0)
             c.use_key = 0;
         else

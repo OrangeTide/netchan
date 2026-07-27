@@ -17,6 +17,12 @@ codec, and `tests/test_nc_auth_ia.c` exercises the edges: a cancel crossing a
 form in flight, a token that has to be dead after the player changed their
 mind, and whether a wiped conversation has a password left in it.
 
+`examples/auth/` runs it over a real socket. `auth_client --register` fills in
+whatever form the server sends and logs in with the account it just made, and
+the server states its form as a `static const` table and writes the result
+through `keystore`. Neither end was compiled against the other's idea of what
+a registration asks for.
+
 ## One method for every scheme
 
 The obvious move is to add a bit next to `NC_AUTH_M_PUBKEY` and
@@ -41,18 +47,26 @@ Nothing in the protocol core changes. Authentication is a conversation on an
 ordinary reliable channel, as the [architecture](../architecture/) page
 describes, and registration is more of the same conversation.
 
-Messages travel on a reliable stream channel, each one length prefixed. The
-stream handles segmentation and reassembly, so a form larger than the MTU is not
-a special case.
+A form is far too big for the 256-byte ceiling the older messages sit under, so
+the two that carry one are bounded separately, by `NC_FORM_MAX_MSG`. That
+number is 2000 rather than something rounder because netchan's own reliable
+message cap is 2048 and a carrier wants a few bytes for itself. A form that
+cannot cross the transport this library ships is a form nobody can use.
 
-The fixed 256-byte message ceiling the older messages use does not stretch to
-a form, so those two messages are bounded by the caller's buffer instead. A
-form also arrives while the conversation is suspended waiting for a
-human, so it has to be copied somewhere that outlives the caller's receive
-buffer. `nc_auth` allocates nothing and holds nothing that large, so the buffer
-comes from the application, which is also where the real cap on an
-unauthenticated peer ends up: a stranger can make the server hold exactly as
-much as its operator chose to offer.
+Whether anything needs framing depends on what carries it. netchan's reliable
+channel preserves message boundaries, so `examples/auth/` puts a tag byte in
+front and is done: the login and the application share one channel and nothing
+is length prefixed. A carrier that hands back bytes rather than messages, a TCP
+socket or a WebSocket, needs the boundaries put back, and `nc_auth` ships
+`nc_auth_frame` and `nc_auth_framer_*` for exactly that. Neither knows anything
+about netchan.
+
+A form also arrives while the conversation is suspended waiting for a human, so
+it has to be copied somewhere that outlives the caller's receive buffer.
+`nc_auth` allocates nothing and holds nothing that large, so the buffer comes
+from the application, which is also where the real cap on an unauthenticated
+peer ends up: a stranger can make the server hold exactly as much as its
+operator chose to offer.
 
 A stream hands back bytes rather than messages, so somebody has to write the
 length in front of each one and reassemble on the far side. `nc_auth` ships

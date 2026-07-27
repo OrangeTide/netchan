@@ -54,10 +54,14 @@ typedef void (*al_data_cb)(struct auth_link *al,
 typedef void (*al_down_cb)(struct auth_link *al, int reason, void *user);
 
 /*
- * The login needs a credential: NC_AUTH_NEED_KEY or NC_AUTH_NEED_PASSWORD.
- * Nothing is waiting on the answer, so the handler is free to return
- * immediately and supply it later, which is how a client prompts a human
- * without stalling the loop the session depends on.
+ * The login needs something from the human: a key, a password, a choice
+ * between logging in and making an account, or a filled-in form. Nothing is
+ * waiting on the answer, so the handler is free to return immediately and
+ * supply it later, which is how a client prompts a human without stalling the
+ * loop the session depends on.
+ *
+ * what is one of the NC_AUTH_NEED_* values, so a client that only ever does
+ * publickey can ignore the two new ones and behave as it always did.
  */
 typedef void (*al_need_cb)(struct auth_link *al, int what, void *user);
 
@@ -79,6 +83,7 @@ struct auth_link_cfg {
     void *verify_ctx;
     const char *user;                    /* client: the name to log in as */
     struct nc_auth_server_cb scb;        /* server: the credential store */
+    struct nc_auth_ia_cb iacb;           /* server: registration, optional */
 };
 
 /* Create a session over an already-bound, non-blocking UDP socket fd. The
@@ -95,6 +100,41 @@ struct auth_link *auth_link_open(struct iox_loop *loop, int fd,
 void auth_link_supply_key(struct auth_link *al, const uint8_t *sk,
                           const uint8_t *pk);
 void auth_link_supply_password(struct auth_link *al, const char *password);
+
+/****************************************************************
+ * Registering, for a client that has no account yet
+ *
+ * A public server meets players it has never seen, so it offers a method that
+ * makes an account rather than checking one. The client answers
+ * NC_AUTH_NEED_METHOD with NC_AUTH_M_REGISTER, fills in whatever form the
+ * server sends, and lands back at the method offer with an account to log in
+ * with. See docs/content/registration/ for why it works that way.
+ *
+ * None of this needs a second connection, a second channel, or a second
+ * credential store. It is the same conversation on the same channel.
+ ****************************************************************/
+
+/* Answer NC_AUTH_NEED_METHOD. Passing 0 abandons the login. */
+void auth_link_supply_method(struct auth_link *al, unsigned method);
+
+/* The form to draw, valid until the next answer is supplied. NULL unless the
+ * link is sitting on NC_AUTH_NEED_FORM. */
+const struct nc_form *auth_link_form(const struct auth_link *al);
+
+/* Answer the form. vals is parallel to the form's fields. */
+void auth_link_submit(struct auth_link *al, const struct nc_form_value *vals,
+                      int n);
+
+/* Give up on the form, or on waiting for an emailed code, and go back to the
+ * method offer with the account one already had. */
+void auth_link_cancel(struct auth_link *al);
+
+/* What the server said it is waiting on, or NULL. Set between "I gave you my
+ * address" and the next form. */
+const char *auth_link_waiting(const struct auth_link *al);
+
+/* True once, just after a registration completes. */
+bool auth_link_registered(struct auth_link *al);
 
 /* Queue application bytes. Returns AUTH_LINK_OK, or AUTH_LINK_ERR if the link
  * is not authenticated yet or the send window stayed full. */

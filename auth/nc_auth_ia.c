@@ -865,6 +865,20 @@ nc_auth_i_ia_client(struct nc_auth *a, const uint8_t *msg, size_t len)
             return NC_AUTH_OK;          /* crossed our cancel; drop it */
         if (a->ia_method == 0)
             return NC_AUTH_ERR;
+        /*
+         * One form is outstanding at a time, and this is where that stops
+         * being a convention and starts being enforced. A peer that sends a
+         * second form while the first is still being filled in would replace
+         * it underneath the application: the strings a client is rendering
+         * are in the buffer about to be overwritten, and the answers it has
+         * collected would be submitted against a different set of names.
+         *
+         * A server has no reason to do it, since a form only follows a
+         * submission or a wait and neither has happened. So this is either a
+         * broken peer or a hostile one, and the conversation ends.
+         */
+        if (a->need == NC_AUTH_NEED_FORM)
+            return NC_AUTH_ERR;
         if (decode_form(a, msg, len) != NC_AUTH_OK)
             return NC_AUTH_ERR;
         a->wait_note = NULL;

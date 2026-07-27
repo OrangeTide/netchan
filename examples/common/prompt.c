@@ -7,8 +7,8 @@
 #include <termios.h>
 #include <unistd.h>
 
-void
-prompt_reader_begin(struct prompt_reader *pr, const char *prompt)
+static void
+reader_begin(struct prompt_reader *pr, const char *prompt, int hide)
 {
     struct termios quiet;
 
@@ -21,6 +21,9 @@ prompt_reader_begin(struct prompt_reader *pr, const char *prompt)
         fflush(stderr);
     }
 
+    if (!hide)
+        return;
+
     /* Clearing ECHO is the whole reason this file exists. A line editor
      * would not help: linenoise and readline both echo by design, so a
      * password prompt is exactly the case they do not cover. */
@@ -30,6 +33,18 @@ prompt_reader_begin(struct prompt_reader *pr, const char *prompt)
         if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &quiet) == 0)
             pr->restored = 1;
     }
+}
+
+void
+prompt_reader_begin(struct prompt_reader *pr, const char *prompt)
+{
+    reader_begin(pr, prompt, 1);
+}
+
+void
+prompt_reader_begin_visible(struct prompt_reader *pr, const char *prompt)
+{
+    reader_begin(pr, prompt, 0);
 }
 
 int

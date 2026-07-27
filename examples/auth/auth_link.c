@@ -49,6 +49,14 @@ struct auth_link {
     struct nc_auth       auth;
     struct auth_link_cb  cb;
     struct nc_auth_server_cb scb;
+    struct nc_auth_ia_cb iacb;
+    /*
+     * nc_auth allocates nothing, so the buffer a form is decoded into comes
+     * from whoever owns the conversation. That is this file. A form arrives
+     * in a message the channel may reuse the moment nc_auth_feed returns, and
+     * the conversation then suspends for however long a human takes.
+     */
+    uint8_t              iabuf[NC_FORM_MAX_MSG];
     char                 user[NC_AUTH_MAX_USER + 1];
 };
 
@@ -217,10 +225,14 @@ advance(struct auth_link *al)
         const uint8_t *sid = nc_crypto_session_id(&al->crypto);
 
         if (sid) {
-            if (al->server)
+            if (al->server) {
                 nc_auth_server_init(&al->auth, sid, &al->scb, auth_out, al);
-            else
+                nc_auth_server_interactive(&al->auth, &al->iacb);
+                nc_auth_server_buffer(&al->auth, al->iabuf, sizeof(al->iabuf));
+            } else {
                 nc_auth_client_init(&al->auth, sid, al->user, auth_out, al);
+                nc_auth_client_buffer(&al->auth, al->iabuf, sizeof(al->iabuf));
+            }
             al->auth_started = 1;
             if (!al->server)
                 nc_auth_start(&al->auth);
@@ -400,6 +412,7 @@ auth_link_open(struct iox_loop *loop, int fd, const struct auth_link_cfg *cfg,
     al->server = cfg->server ? 1 : 0;
     al->timer_id = -1;
     al->scb = cfg->scb;
+    al->iacb = cfg->iacb;
     if (cfg->peer) {
         al->peer = *cfg->peer;
         al->have_peer = 1;
@@ -456,6 +469,63 @@ auth_link_supply_password(struct auth_link *al, const char *password)
     flush_out(al);
 }
 
+/*
+ * Registration answers arrive the same way a password does, through a supply
+ * call that resumes a suspended conversation. Each one clears need_fired so
+ * the next question is reported even when it is the same kind as the last:
+ * form, then form again with the field that was wrong marked.
+ */
+void
+auth_link_supply_method(struct auth_link *al, unsigned method)
+{
+    if (!al->auth_started || al->server)
+        return;
+    nc_auth_supply_method(&al->auth, method);
+    al->need_fired = NC_AUTH_NEED_NOTHING;
+    settle_auth(al);
+    flush_out(al);
+}
+
+const struct nc_form *
+auth_link_form(const struct auth_link *al)
+{
+    return al->auth_started ? nc_auth_form(&al->auth) : NULL;
+}
+
+void
+auth_link_submit(struct auth_link *al, const struct nc_form_value *vals, int n)
+{
+    if (!al->auth_started || al->server)
+        return;
+    nc_auth_submit(&al->auth, vals, n);
+    al->need_fired = NC_AUTH_NEED_NOTHING;
+    settle_auth(al);
+    flush_out(al);
+}
+
+void
+auth_link_cancel(struct auth_link *al)
+{
+    if (!al->auth_started || al->server)
+        return;
+    nc_auth_cancel(&al->auth);
+    al->need_fired = NC_AUTH_NEED_NOTHING;
+    settle_auth(al);
+    flush_out(al);
+}
+
+const char *
+auth_link_waiting(const struct auth_link *al)
+{
+    return al->auth_started ? nc_auth_waiting(&al->auth) : NULL;
+}
+
+bool
+auth_link_registered(struct auth_link *al)
+{
+    return al->auth_started ? nc_auth_registered(&al->auth) : false;
+}
+
 int
 auth_link_send(struct auth_link *al, const void *data, size_t len)
 {
@@ -501,5 +571,14 @@ auth_link_close(struct auth_link *al)
         }
         netchan_close(al->conn);
     }
+    /*
+     * However the session ended, a registration left half-finished has to be
+     * dropped: the server frees whatever it was holding and kills the token
+     * it issued, so a link that arrived by mail after the player gave up
+     * finds nothing. This also wipes the buffer, which still has the password
+     * they typed in it.
+     */
+    if (al->auth_started)
+        nc_auth_clear(&al->auth);
     free(al);
 }

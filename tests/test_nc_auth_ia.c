@@ -592,6 +592,48 @@ main(void)
           nc_auth_state(&C) != NC_AUTH_STATE_OK);
     client_choice = NC_AUTH_M_REGISTER;
 
+    /* 15. A second form while the first is still outstanding is refused.
+     *     The invariant says a form only follows a submission or a wait, so a
+     *     peer doing this is broken or hostile; either way, replacing a form
+     *     the application is part way through filling in would submit one
+     *     form's answers against another form's names. */
+    {
+        uint8_t form_msg[NC_FORM_MAX_MSG];
+        size_t form_len = 0;
+
+        account_exists = 0;
+        server_wait_next = 0;
+        client_cancel_at = -1;
+        client_choice_again = 0;
+        setup();
+
+        /* Deliver by hand as far as the first form, keeping a copy of it, and
+         * stop there rather than answering. */
+        nc_auth_start(&C);
+        while (W.head < W.tail) {
+            int to_server = W.q[W.head].to_server;
+            size_t len = W.q[W.head].len;
+            uint8_t pkt[NC_FORM_MAX_MSG];
+
+            memcpy(pkt, W.q[W.head].buf, len);
+            W.head++;
+            nc_auth_feed(to_server ? W.server : W.client, pkt, len);
+            if (nc_auth_needs(&C) == NC_AUTH_NEED_FORM) {
+                memcpy(form_msg, pkt, len);
+                form_len = len;
+                break;
+            }
+            service_needs();
+        }
+
+        check("15. the client is holding a form",
+              form_len > 0 && nc_auth_form(&C) != NULL);
+        check("15. a second form is refused",
+              nc_auth_feed(&C, form_msg, form_len) == NC_AUTH_ERR);
+        check("15. and the conversation ends rather than half-updating",
+              nc_auth_state(&C) == NC_AUTH_STATE_DENIED);
+    }
+
     /* 14. The framer: a message split across reads, and two in one read. */
     {
         struct nc_auth_framer f;

@@ -45,16 +45,124 @@ check(const char *what, int cond)
  * Credentials, in memory
  ****************************************************************/
 
+/*
+ * Registering, as a second mode over the same harness.
+ *
+ * The server has no account until the client makes one, so the interesting
+ * path is not the happy one: the first submission is refused with a message
+ * on the field that was wrong, and the second gets it right. A client that
+ * cannot show a player which box upset the server has not implemented this.
+ */
+static int mode_register;
+static char reg_account[NC_AUTH_MAX_USER + 1];
+static char reg_secret[NC_AUTH_MAX_PASS];
+static int reg_forms;           /* forms the client was asked to fill */
+static int reg_error_seen;      /* a per-field message came back */
+static int reg_done;            /* the account exists */
+
+static const struct nc_form_field REG_FIELDS[] = {
+    { NC_FF_TEXT, NC_FF_REQUIRED, "user", "Account name", NULL,
+      NULL, NULL, 20, NC_AUTH_MAX_USER, 0, 0, NULL, 0 },
+    { NC_FF_PASSWORD, NC_FF_REQUIRED, "pw", "Password", NULL,
+      NULL, NULL, 20, 64, 0, 0, NULL, 0 },
+    { NC_FF_NOTE, 0, NULL, "Eight characters at least.",
+      NULL, NULL, NULL, 0, 0, 0, 0, NULL, 0 },
+};
+
+static void
+reg_form(struct nc_form *out, const struct nc_form_error *errs, int n)
+{
+    memset(out, 0, sizeof(*out));
+    out->title = "Create an account";
+    out->fields = REG_FIELDS;
+    out->nfields = 3;
+    out->errors = errs;
+    out->nerrors = (uint8_t)n;
+}
+
+static int
+s_begin(void *ctx, unsigned method, struct nc_form *out)
+{
+    (void)ctx;
+    (void)method;
+    reg_form(out, NULL, 0);
+    return NC_AUTH_IA_MORE;
+}
+
+static int
+s_submit(void *ctx, struct nc_auth *a, struct nc_form *out)
+{
+    static const struct nc_form_error TOO_SHORT[] = {
+        { "pw", "at least eight characters" },
+    };
+    const char *u = nc_auth_value_text(a, "user");
+    const char *p = nc_auth_value_text(a, "pw");
+
+    (void)ctx;
+    if (!u || !p)
+        return NC_AUTH_IA_DENIED;
+    if (strlen(p) < 8) {
+        reg_form(out, TOO_SHORT, 1);
+        return NC_AUTH_IA_MORE;
+    }
+    snprintf(reg_account, sizeof(reg_account), "%s", u);
+    snprintf(reg_secret, sizeof(reg_secret), "%s", p);
+    reg_done = 1;
+    return NC_AUTH_IA_DONE;
+}
+
+/* Fill in whatever arrived, deliberately badly the first time. */
+static void
+cli_form(struct auth_link *al)
+{
+    const struct nc_form *f = auth_link_form(al);
+    struct nc_form_value vals[NC_FORM_MAX_FIELDS];
+    int i;
+
+    if (!f) {
+        auth_link_cancel(al);
+        return;
+    }
+    reg_forms++;
+    memset(vals, 0, sizeof(vals));
+    for (i = 0; i < (int)f->nfields; i++) {
+        const char *n = f->fields[i].name;
+
+        if (f->fields[i].error)
+            reg_error_seen = 1;
+        if (!n)
+            continue;
+        if (strcmp(n, "user") == 0)
+            vals[i].text = "alice";
+        else if (strcmp(n, "pw") == 0)
+            vals[i].text = reg_forms == 1 ? "short" : "correct horse";
+    }
+    auth_link_submit(al, vals, (int)f->nfields);
+}
+
 /* The client's answer to a credential request. A real client would go and ask
  * a human here and reply whenever it heard back; the test replies at once. */
 static void
 cli_need(struct auth_link *al, int what, void *user)
 {
     (void)user;
+
+    if (what == NC_AUTH_NEED_METHOD) {
+        /* Register first, then log in with what was just enrolled. */
+        auth_link_supply_method(al, reg_done ? NC_AUTH_M_PASSWORD
+                                             : NC_AUTH_M_REGISTER);
+        return;
+    }
+    if (what == NC_AUTH_NEED_FORM) {
+        cli_form(al);
+        return;
+    }
+    if (what == NC_AUTH_NEED_PASSWORD) {
+        auth_link_supply_password(al, mode_register ? reg_secret : NULL);
+        return;
+    }
     if (what == NC_AUTH_NEED_KEY)
         auth_link_supply_key(al, user_sk, user_pk);
-    else
-        auth_link_supply_password(al, NULL);
 }
 
 static unsigned
@@ -62,7 +170,17 @@ s_methods(void *ctx, const char *user)
 {
     (void)ctx;
     (void)user;
+    if (mode_register)
+        return NC_AUTH_M_PASSWORD | NC_AUTH_M_REGISTER;
     return NC_AUTH_M_PUBKEY;
+}
+
+static bool
+s_check_password(void *ctx, const char *user, const char *password)
+{
+    (void)ctx;
+    return reg_done && strcmp(user, reg_account) == 0 &&
+           strcmp(password, reg_secret) == 0;
 }
 
 static bool
@@ -169,6 +287,9 @@ run_once(const char *what)
     scfg.static_sk = host_sk;
     scfg.scb.methods = s_methods;
     scfg.scb.check_key = s_check_key;
+    scfg.scb.check_password = s_check_password;
+    scfg.iacb.begin = s_begin;
+    scfg.iacb.submit = s_submit;
     memset(&scb, 0, sizeof(scb));
     scb.on_data = srv_data;
 
@@ -321,7 +442,23 @@ main(void)
         check("nothing was echoed to a rejected host", !echo_seen);
     }
 
-    /* 3. The periodic tick must outlive its first firing. */
+    /* 3. A client with no account makes one and then logs in with it, over
+     *    the same connection. The first submission is refused on purpose, so
+     *    this also covers the path that matters most to a player: a form
+     *    coming back with the offending field marked. */
+    memcpy(expect_pk, host_pk, 32);
+    mode_register = 1;
+    if (run_once("registration")) {
+        check("the server made the account", reg_done);
+        check("the name typed into the form is the account",
+              strcmp(reg_account, "alice") == 0);
+        check("a bad submission was re-asked", reg_forms == 2);
+        check("and came back with the field marked", reg_error_seen);
+        check("registering then logging in reaches an echo", echo_seen);
+    }
+    mode_register = 0;
+
+    /* 4. The periodic tick must outlive its first firing. */
     phase = "tick";
     test_tick_keeps_running();
 

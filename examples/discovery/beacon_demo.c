@@ -60,6 +60,9 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 
+/* This program has its own failures to report, distinct from the library's. */
+#define BD_ERR          (-1)
+
 #define DEFAULT_PORT    9901
 #define DEFAULT_EVERY   5000        /* announce interval, milliseconds */
 #define GAME_ID         0x5a4f4d42u /* whatever the game picks; "BMOZ" here */
@@ -168,7 +171,7 @@ bind_udp(int port, int broadcast)
 
     fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (fd < 0)
-        return -1;
+        return BD_ERR;
 
     /* So a browser and a server can sit on the same port on one machine,
      * which is the ordinary case when someone hosts and plays. */
@@ -185,7 +188,7 @@ bind_udp(int port, int broadcast)
     sa.sin_port = htons((uint16_t)port);
     if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) != 0) {
         close(fd);
-        return -1;
+        return BD_ERR;
     }
     return fd;
 }
@@ -201,7 +204,7 @@ parse_to(const char *s, int defport, struct sockaddr_in *out)
 
     n = colon ? (size_t)(colon - s) : strlen(s);
     if (n == 0 || n >= sizeof(host))
-        return -1;
+        return BD_ERR;
     memcpy(host, s, n);
     host[n] = '\0';
     if (colon)

@@ -95,7 +95,16 @@
 #define NC_FORM_MAX_VALUE    256   /* one submitted answer */
 #define NC_FORM_MAX_ERRORS   500   /* all error text in one form, in bytes */
 #define NC_FORM_MAX_TOKEN     64   /* a resumption or bearer token */
-#define NC_FORM_MAX_MSG     4096   /* one encoded form or set of answers */
+/*
+ * One encoded form, or one set of answers.
+ *
+ * Sized to fit the carrier rather than chosen for roundness. netchan's own
+ * reliable message cap is 2048 bytes, and a carrier wants a few for itself: a
+ * tag byte here, a length prefix there. A form that cannot cross the transport
+ * this library ships is a form nobody can use, so the ceiling sits below that
+ * cap rather than above it.
+ */
+#define NC_FORM_MAX_MSG     2000
 
 /**
  * Conversation state, as reported by nc_auth_state. These are states, not

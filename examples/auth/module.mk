@@ -17,6 +17,7 @@
 #   auth_server --adduser bob     enrol a password
 #   auth_server --port 9000
 #   auth_client --port 9000 --user alice
+#   auth_client --port 9000 --register     make an account, then log in with it
 
 ROOT := $(dir $(lastword $(MAKEFILE_LIST)))
 

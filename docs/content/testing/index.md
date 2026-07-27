@@ -60,10 +60,18 @@ become crashes on a different allocator.
 
 ## Fuzzing
 
-`netchan_feed` is the library's entire untrusted surface. Every byte a peer
-can send arrives through it, and the frame parsers, fragment reassembly, the
-reorder buffer and the channel table all run on data nobody has validated.
-`tests/fuzz_netchan_feed.c` is its harness.
+`netchan_feed` is the largest of the library's untrusted surfaces. Every byte
+a peer can send arrives through it, and the frame parsers, fragment
+reassembly, the reorder buffer and the channel table all run on data nobody
+has validated. `tests/fuzz_netchan_feed.c` is its harness.
+
+Two more have since joined it and have no harness yet. `nc_beacon_parse` reads
+a packet from anyone on the local network, which is a lower bar than netchan's
+own, since a beacon needs no handshake first. The form decoder inside
+`nc_auth_ia.c` reads a message from a peer that is by definition not
+authenticated, because the whole point of it is to run before there is an
+account. Both are better fuzzing candidates than `netchan_feed` on the
+argument this page already makes, and both are unfuzzed today.
 
 The harness drives a whole session per input rather than feeding one datagram
 to a fresh connection, because the interesting bugs need state. It feeds the
@@ -126,7 +134,7 @@ unused rather than as buggy.
 
 As of 0.8.0, on this tree:
 
-- The suite passes 186 assertions across its 20 binaries, and
+- The suite passes 191 assertions across its 20 binaries, and
   `Makefile.simple` passes its 15.
 - Sanitizers are clean over the whole suite.
 - The fuzzer ran 522,458 executions at about 8,500/second and found no crash.

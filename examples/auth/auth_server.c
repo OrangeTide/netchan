@@ -28,13 +28,18 @@ struct server {
  * Offer the same methods for every name, known or not. Tailoring the answer
  * to whether the account exists would turn this one message into an account
  * enumerator, and the client learns nothing by trying and failing.
+ *
+ * Registration is offered on the same terms, to everyone, which is what keeps
+ * that property. The form does leak: it has to say when a name is taken. But
+ * it leaks to somebody who asked for a form, rather than to everybody who
+ * connects.
  */
 static unsigned
 srv_methods(void *ctx, const char *user)
 {
     (void)ctx;
     (void)user;
-    return NC_AUTH_M_PUBKEY | NC_AUTH_M_PASSWORD;
+    return NC_AUTH_M_PUBKEY | NC_AUTH_M_PASSWORD | NC_AUTH_M_REGISTER;
 }
 
 static bool
@@ -51,6 +56,104 @@ srv_check_password(void *ctx, const char *user, const char *password)
     struct server *s = ctx;
 
     return ks_check_password(s->passwd, user, password);
+}
+
+/****************************************************************
+ * Registration, as a form
+ *
+ * The server states the form; nothing in netchan parses a config file or
+ * knows what any of these fields mean. A real operator would read this out
+ * of their own configuration, which is the whole reason the format describes
+ * itself: a client compiled a year ago renders a field added last week.
+ ****************************************************************/
+
+static const struct nc_form_field REGISTER_FIELDS[] = {
+    { NC_FF_TEXT, NC_FF_REQUIRED, "user", "Account name", NULL,
+      NULL, NULL, 20, NC_AUTH_MAX_USER, 0, 0, NULL, 0 },
+    { NC_FF_PASSWORD, NC_FF_REQUIRED, "pw", "Password", NULL,
+      NULL, NULL, 20, NC_AUTH_MAX_PASS - 1, 0, 0, NULL, 0 },
+    { NC_FF_PASSWORD, NC_FF_REQUIRED, "pw2", "Password again", NULL,
+      NULL, NULL, 20, NC_AUTH_MAX_PASS - 1, 0, 0, NULL, 0 },
+    { NC_FF_NOTE, 0, NULL,
+      "The password is stored as an Argon2id hash, never as itself.",
+      NULL, NULL, NULL, 0, 0, 0, 0, NULL, 0 },
+};
+
+static void
+registration_form(struct nc_form *out, const struct nc_form_error *errs, int n)
+{
+    memset(out, 0, sizeof(*out));
+    out->title = "Create an account";
+    out->fields = REGISTER_FIELDS;
+    out->nfields = (uint8_t)(sizeof(REGISTER_FIELDS) /
+                             sizeof(REGISTER_FIELDS[0]));
+    out->errors = errs;
+    out->nerrors = (uint8_t)n;
+}
+
+static int
+srv_begin(void *ctx, unsigned method, struct nc_form *out)
+{
+    (void)ctx;
+    (void)method;
+    registration_form(out, NULL, 0);
+    return NC_AUTH_IA_MORE;
+}
+
+/*
+ * Everything the client sent is a hint until it is checked here. The form
+ * said the name is required and gave a maximum length, and none of that
+ * binds a client that chose to ignore it.
+ */
+static int
+srv_submit(void *ctx, struct nc_auth *a, struct nc_form *out)
+{
+    static struct nc_form_error errs[3];
+    struct server *s = ctx;
+    const char *user = nc_auth_value_text(a, "user");
+    const char *pw = nc_auth_value_text(a, "pw");
+    const char *pw2 = nc_auth_value_text(a, "pw2");
+    int n = 0;
+
+    if (!user || user[0] == '\0' || strlen(user) > NC_AUTH_MAX_USER) {
+        errs[n].name = "user";
+        errs[n].message = "a name is required";
+        n++;
+    } else if (ks_user_exists(s->passwd, user)) {
+        errs[n].name = "user";
+        errs[n].message = "that name is taken";
+        n++;
+    }
+    if (!pw || strlen(pw) < 8) {
+        errs[n].name = "pw";
+        errs[n].message = "at least eight characters";
+        n++;
+    } else if (!pw2 || strcmp(pw, pw2) != 0) {
+        errs[n].name = "pw2";
+        errs[n].message = "the two do not match";
+        n++;
+    }
+    if (n > 0) {
+        registration_form(out, errs, n);
+        return NC_AUTH_IA_MORE;      /* ask again, with the boxes marked */
+    }
+
+    if (ks_passwd_add(s->passwd, user, pw) != 0) {
+        errs[0].name = "user";
+        errs[0].message = "the server could not save that";
+        registration_form(out, errs, 1);
+        return NC_AUTH_IA_MORE;
+    }
+    printf("* registered %s\n", user);
+    fflush(stdout);
+
+    /*
+     * Done, and deliberately not logged in. The conversation goes back to
+     * the method offer, the methods callback runs again, and the client
+     * authenticates with the credential it just enrolled. One path into a
+     * session, the same one a returning player takes.
+     */
+    return NC_AUTH_IA_DONE;
 }
 
 /****************************************************************
@@ -207,6 +310,9 @@ main(int argc, char **argv)
     cfg.scb.check_key = srv_check_key;
     cfg.scb.check_password = srv_check_password;
     cfg.scb.ctx = &s;
+    cfg.iacb.begin = srv_begin;
+    cfg.iacb.submit = srv_submit;
+    cfg.iacb.ctx = &s;
 
     memset(&cb, 0, sizeof(cb));
     cb.on_up = on_up;
