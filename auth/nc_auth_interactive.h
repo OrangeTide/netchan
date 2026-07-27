@@ -619,11 +619,20 @@ long nc_auth_framer_next(struct nc_auth_framer *f, const void **msg);
  ****************************************************************/
 
 /****************************************************************
- * Still open
+ * Not netchan's business
  *
- *  - Whether the operator's form config file is a keystore format, which is
- *    where the other five plain-text formats live, or stays entirely the
- *    application's business. The struct works either way.
+ * Where a server's form comes from. keystore holds the five files that decide
+ * trust, and its first paragraph says why they are files an administrator can
+ * read: the trust decisions live outside the protocol. A form is not a trust
+ * decision. It is configuration, essentially every multiplayer game already has
+ * a config format, and netchan is not going to add another one or parse
+ * anyone's. What it provides is a way for a server to state a form and a client
+ * to receive it.
+ *
+ * A form the server built wrong is the server operator's bug. Nothing here
+ * validates one on the way out or salvages one on the way in. The client drops
+ * the connection with an error, an administrator tests their own configuration,
+ * and the mistake stays easy to find.
  ****************************************************************/
 
 #endif /* NC_AUTH_INTERACTIVE_H */

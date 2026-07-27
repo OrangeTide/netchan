@@ -273,13 +273,32 @@ references, and malformed nesting, then exposing it to the first message a
 stranger can send, and no browser will ever render this anyway. A flat array
 costs nothing to decode and cannot be malformed in interesting ways.
 
-The form belongs to the operator, which is why it describes itself rather than
+The form belongs to the server, which is why it describes itself rather than
 being a struct both ends were compiled against. A registration form is
 configuration, and two shards of one game are not configured alike: one asks
 for a date of birth, one wants an invite code, one runs somewhere that requires
 an age check and one does not. A client that has to be rebuilt to see a new
 field is a client that cannot follow its own game. The server sends what its
-operator wrote, and the client renders whatever arrives.
+operator configured, and the client renders whatever arrives.
+
+Where that configuration comes from is not netchan's business. Essentially
+every multiplayer game already has a config file format, and netchan is not
+going to add another one or parse anyone's. It provides a way for a server to
+state a form and for a client to receive it, and stops there. netchan does not
+enforce policy.
+
+A client needs no layout engine to render one. Top to bottom, one field per row,
+in the order the form lists them, is enough and is what the format is shaped
+for. This is registration, not a document: the same job a teletype did in the
+1980s, and the same job Gopher did with rather less. A client with a real
+interface can do better with the same fields, and nothing in the format stops
+it, but nothing requires it either.
+
+A form the server built wrong is the server operator's bug. The client drops the
+connection with an error and says why. netchan does not validate a form on the
+way out or try to salvage one on the way in, because an administrator who
+misconfigures their server can test it, and a protocol that papers over the
+mistake only makes it harder to find.
 
 | Type | Carries | Attributes beyond the common ones |
 |---|---|---|
@@ -355,6 +374,15 @@ a few bytes and buys a form that can be read in a hex dump and that maps almost
 line for line onto the file its operator wrote it in. An error is an `e=` entry
 inside the record it belongs to. Answers come back the same way, `n=` and `v=`,
 with `v=` repeated when a choice allows more than one.
+
+The whole form carries its own byte count, so framing it is mechanical and a
+reader always knows where it ends. What is inside still has to be interpreted.
+The IDL will hand back the strings without being told what a form is, and
+turning those strings into fields, applying them to a screen, and deciding what
+a missing or contradictory attribute means all belong to the client and server
+implementations rather than to the codec. That division is deliberate: it is
+what lets the same wire format carry a form nobody had thought of when the codec
+was written.
 
 ## Errors
 
