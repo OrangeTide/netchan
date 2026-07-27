@@ -1,4 +1,9 @@
-# Testing and analysis
+---
+title: Testing and analysis
+weight: 10
+abstract: Five layers of checking, from unit tests to a fuzzer, and what each one has actually found.
+category: manual
+---
 
 What netchan checks about itself, how to run each check, and what each one
 has actually found. The short version: five layers, from ordinary unit tests
@@ -133,7 +138,8 @@ As of 0.8.0, on this tree:
 Worth stating plainly: the two analyzer findings were both in test code, and
 the fuzzer has not yet found anything. That is a weaker claim than it sounds.
 It means the parsers survive the inputs a fuzzer reaches in minutes, not that
-they are correct. See `TODO.md` for what would strengthen it.
+they are correct. `TODO.md` in the repository records what would
+strengthen it, including a costed plan for bounded model checking.
 
 ## What is not covered
 

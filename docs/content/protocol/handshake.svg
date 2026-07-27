@@ -1,0 +1,97 @@
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+ "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1"
+ width="960px" height="280px"
+ viewBox="0 0 960 280"
+ xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"
+ stroke-width="1" text-rendering="geometricPrecision">
+<polygon fill="white" points="223,7 255,7 255,16 223,16"/>
+<text x="240" y="16" textLength="31" font-family="Helvetica" font-size="12" fill="black" text-anchor="middle">
+
+Client
+</text>
+<polygon fill="white" points="701,7 737,7 737,16 701,16"/>
+<text x="720" y="16" textLength="35" font-family="Helvetica" font-size="12" fill="black" text-anchor="middle">
+
+Server
+</text>
+<line x1="240" y1="22" x2="240" y2="50" stroke="black"/>
+<line x1="720" y1="22" x2="720" y2="50" stroke="black"/>
+<line x1="240" y1="33" x2="720" y2="33" stroke="black"/>
+<polygon fill="black" points="720,33 710,39 710,27"/>
+<polygon fill="white" points="408,23 551,23 551,32 408,32"/>
+<text x="409" y="32" textLength="141" font-family="Helvetica" font-size="12" fill="black">
+CONNECT_INIT (client id)
+</text>
+<line x1="240" y1="50" x2="240" y2="78" stroke="black"/>
+<line x1="720" y1="50" x2="720" y2="78" stroke="black"/>
+<line x1="720" y1="61" x2="240" y2="61" stroke="black"/>
+<polygon fill="black" points="240,61 250,67 250,55"/>
+<polygon fill="white" points="358,51 600,51 600,60 358,60"/>
+<text x="359" y="60" textLength="240" font-family="Helvetica" font-size="12" fill="black">
+CONNECT_ACCEPT (server id, idle timeout)
+</text>
+<line x1="240" y1="78" x2="240" y2="95" stroke="black"/>
+<line x1="720" y1="78" x2="720" y2="95" stroke="black"/>
+<line x1="120" y1="83" x2="840" y2="83" stroke="black" stroke-dasharray="2,2"/>
+<polygon fill="white" points="427,79 532,79 532,88 427,88"/>
+<text x="428" y="88" textLength="103" font-family="Helvetica" font-size="12" fill="black">
+both CONNECTED
+</text>
+<line x1="240" y1="95" x2="240" y2="123" stroke="black"/>
+<line x1="720" y1="95" x2="720" y2="123" stroke="black"/>
+<line x1="240" y1="106" x2="720" y2="106" stroke="black"/>
+<polygon fill="black" points="720,106 710,112 710,100"/>
+<polygon fill="white" points="375,96 584,96 584,105 375,105"/>
+<text x="376" y="105" textLength="207" font-family="Helvetica" font-size="12" fill="black">
+CHANNEL_OPEN (type, content_type)
+</text>
+<line x1="240" y1="123" x2="240" y2="151" stroke="black"/>
+<line x1="720" y1="123" x2="720" y2="151" stroke="black"/>
+<line x1="720" y1="134" x2="240" y2="134" stroke="black"/>
+<polygon fill="black" points="240,134 250,140 250,128"/>
+<polygon fill="white" points="424,124 534,124 534,133 424,133"/>
+<text x="425" y="133" textLength="108" font-family="Helvetica" font-size="12" fill="black">
+WINDOW_UPDATE
+</text>
+<line x1="240" y1="151" x2="240" y2="179" stroke="black"/>
+<line x1="720" y1="151" x2="720" y2="179" stroke="black"/>
+<line x1="240" y1="162" x2="720" y2="162" stroke="black"/>
+<polygon fill="black" points="720,162 710,168 710,156"/>
+<polygon fill="white" points="462,152 496,152 496,161 462,161"/>
+<text x="463" y="161" textLength="32" font-family="Helvetica" font-size="12" fill="black">
+DATA
+</text>
+<line x1="240" y1="179" x2="240" y2="207" stroke="black"/>
+<line x1="720" y1="179" x2="720" y2="207" stroke="black"/>
+<line x1="720" y1="190" x2="240" y2="190" stroke="black"/>
+<polygon fill="black" points="240,190 250,196 250,184"/>
+<polygon fill="white" points="466,180 493,180 493,189 466,189"/>
+<text x="467" y="189" textLength="25" font-family="Helvetica" font-size="12" fill="black">
+ACK
+</text>
+<line x1="240" y1="207" x2="240" y2="224" stroke="black"/>
+<line x1="720" y1="207" x2="720" y2="224" stroke="black"/>
+<line x1="120" y1="212" x2="840" y2="212" stroke="black" stroke-dasharray="2,2"/>
+<polygon fill="white" points="418,208 541,208 541,217 418,217"/>
+<text x="419" y="217" textLength="121" font-family="Helvetica" font-size="12" fill="black">
+client leaves gracefully
+</text>
+<line x1="240" y1="224" x2="240" y2="252" stroke="black"/>
+<line x1="720" y1="224" x2="720" y2="252" stroke="black"/>
+<line x1="240" y1="235" x2="720" y2="235" stroke="black"/>
+<polygon fill="black" points="720,235 710,241 710,229"/>
+<polygon fill="white" points="439,225 520,225 520,234 439,234"/>
+<text x="440" y="234" textLength="79" font-family="Helvetica" font-size="12" fill="black">
+DISCONNECT
+</text>
+<line x1="240" y1="252" x2="240" y2="280" stroke="black"/>
+<line x1="720" y1="252" x2="720" y2="280" stroke="black"/>
+<path d="M 240 269 A238,6 0 0,1 240,257" stroke="black" fill="none"/><polygon fill="black" points="240,269 230,275 230,263"/>
+<polygon fill="white" points="240,253 319,253 319,262 240,262"/>
+<text x="241" y="262" textLength="77" font-family="Helvetica" font-size="12" fill="black">
+netchan_close
+</text>
+<line x1="240" y1="274" x2="240" y2="280" stroke="black"/>
+<line x1="720" y1="274" x2="720" y2="280" stroke="black"/>
+</svg>

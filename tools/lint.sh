@@ -56,7 +56,8 @@ check_pattern "per-file licence line (the root LICENSE is the one place)" 'PUBLI
 
 # The same rule for shell and awk. Anchored to a comment line, so this file
 # does not report the pattern it searches for.
-script_licence=$(owned_scripts | xargs grep -n '^# *PUBLIC DOMAIN' 2>/dev/null)
+script_licence=$(owned_scripts |
+                 xargs grep -nE '^#.*PUBLIC DOMAIN \(CC0' 2>/dev/null)
 if [ -n "$script_licence" ]; then
     fail "lint: per-file licence line in a script"
     printf '%s\n' "$script_licence" | sed 's/^/  /'

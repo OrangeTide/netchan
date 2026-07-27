@@ -1,7 +1,7 @@
 #!/bin/sh
 # check-symbols.sh : fail if the manual calls a netchan function that is gone
 #
-# Usage: check-symbols.sh built-manual.html src/netchan.h
+# Usage: check-symbols.sh header.h page.html [page.html ...]
 #
 # The API reference is generated from the header and cannot drift. The prose
 # and the code samples are hand-written and can: a guide may go on calling a
@@ -11,14 +11,15 @@
 
 set -eu
 
-PAGE=${1:?usage: check-symbols.sh page.html header.h}
-HDR=${2:?usage: check-symbols.sh page.html header.h}
+HDR=${1:?usage: check-symbols.sh header.h page.html [page.html ...]}
+shift
+[ "$#" -gt 0 ] || { echo "check-symbols.sh: no pages given" >&2; exit 2; }
 
 # Symbols the header declares or defines: functions, macros, enum values.
 decls=$(grep -oE '\bnetchan_[A-Za-z0-9_]+' "$HDR" | sort -u)
 
 # Symbols the page names as a call: netchan_xxx immediately before "(".
-used=$(grep -oE '\bnetchan_[A-Za-z0-9_]+ *\(' "$PAGE" \
+used=$(grep -hoE '\bnetchan_[A-Za-z0-9_]+ *\(' "$@" \
        | sed 's/ *($//; s/ *(//' | sort -u)
 
 missing=""

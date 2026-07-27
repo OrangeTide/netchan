@@ -1,8 +1,9 @@
-name: Manual
+name: Documentation
 
-# Builds the manual on every push and pull request so a broken page or a stale
-# API symbol fails CI. Only a push to main deploys; a pull request builds and
-# uploads nothing, so a fork cannot publish.
+# Builds the documentation site on every push and pull request so a broken
+# page, a dead link, or a stale API symbol fails CI. Only a push to main
+# deploys; a pull request builds and uploads nothing, so a fork cannot
+# publish.
 
 on:
   push:
@@ -24,19 +25,30 @@ concurrency:
 
 jobs:
   build:
-    name: build the manual
+    name: build the site
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # fetch-depth: 0 is load-bearing, not caution. The default shallow
+      # checkout carries no tags, so `git describe` finds nothing and every
+      # build would stamp the pages as a -dev commit even at a release tag.
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
-      - name: Install the diagram renderers
+      - name: Install the renderers
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends mscgen graphviz
+          sudo apt-get install -y --no-install-recommends \
+            mscgen graphviz lowdown
 
       - name: Build
-        run: docs/build.sh "$GITHUB_WORKSPACE/_site"
+        run: make -C docs site OUT="$GITHUB_WORKSPACE/_site"
+
+      # Dead links, root-absolute paths, a missing .nojekyll, and any prose
+      # that names a netchan function the header no longer declares.
+      - name: Check
+        run: make -C docs check OUT="$GITHUB_WORKSPACE/_site"
 
       - name: Upload the page
         uses: actions/upload-pages-artifact@v3

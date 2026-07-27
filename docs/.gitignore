@@ -1,0 +1,6 @@
+_site/
+_site-drafts/
+public/
+
+# Generated from ../src/netchan.h by `make api`; never edit or commit.
+content/api/
