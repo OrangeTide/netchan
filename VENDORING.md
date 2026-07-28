@@ -156,18 +156,25 @@ depended on, for the same reason netchan expects to be vendored itself.
 
 ### iox (`examples/iox/`)
 
-- **Files:** `iox_loop.c`, `iox_fd.c`, `iox_signal.c`, `iox_timer.c`, their
-  headers, and the header-only priority queue `pq.h`.
+- **Version:** 0.1.0
+- **Upstream:** <https://github.com/OrangeTide/libiox>
+- **Files:** `iox_loop.c`, `iox_fd.c`, `iox_signal.c`, `iox_timer.c`,
+  `iox_plat.c`, their headers, `iox_internal.h`, `iox_version.h`, and the
+  header-only priority queue `pq.h`. See `examples/iox/VENDORED.md`.
 - **What it is:** a compact `poll()`-based event loop with file-descriptor
-  watchers, one-shot timers on a binary heap, and signal delivery over a
-  self-pipe. It is the same event loop the *lumi* terminal workspace uses.
+  watchers, one-shot timers on a binary heap, and signal delivery that runs
+  the callback in normal context rather than in the handler. Self-contained
+  on POSIX and Windows.
 - **Why it is under `examples/`:** the library does not have an event loop and
   does not want one. `netchan_service()` returns the number of milliseconds
   until it next needs attention, which is exactly what every loop wants to be
   told, so netchan fits under whichever one you already run. The example
   programs needed *something*, and this is what they picked.
-- **Licence:** MIT-0 OR Public Domain (the headers carry the notice).
-- **Local changes:** none.
+- **Licence:** MIT-0 OR CC0-1.0. See `examples/iox/LICENSE`; the sources
+  carry no per-file notice.
+- **Local changes:** none. Refresh with libiox's own script:
+  `tools/vendor.sh --version vX.Y.Z --dest examples/iox --force --no-module-mk`,
+  which leaves netchan's `module.mk` alone.
 
 ### modular-make (`GNUmakefile`)
 
