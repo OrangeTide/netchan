@@ -67,8 +67,16 @@ send_to_client(void *ctx, const void *m, size_t n)
  * The application on each side
  ****************************************************************/
 
-static uint8_t client_buf[2048];
-static uint8_t server_buf[2048];
+/*
+ * Deliberately odd addresses. Nothing promises the caller's buffer is aligned
+ * for anything the arena carves out of it, so the test hands over one that is
+ * not, and a misaligned struct shows up as a UBSan report.
+ */
+#define BUFLEN 2048
+static uint8_t client_backing[BUFLEN + 1];
+static uint8_t server_backing[BUFLEN + 1];
+static uint8_t *const client_buf = client_backing + 1;
+static uint8_t *const server_buf = server_backing + 1;
 
 /*
  * What the client answers with. The offer comes round again every time a
@@ -315,8 +323,8 @@ setup(void)
     iacb.cancelled = s_cancelled;
 
     memset(&W, 0, sizeof(W));
-    memset(client_buf, 0, sizeof(client_buf));
-    memset(server_buf, 0, sizeof(server_buf));
+    memset(client_buf, 0, BUFLEN);
+    memset(server_buf, 0, BUFLEN);
     client_forms = client_waits = client_asks = 0;
     server_cancelled = 0;
     server_stage = 0;
@@ -324,8 +332,8 @@ setup(void)
     nc_auth_client_init(&C, sid, client_name, send_to_server, NULL);
     nc_auth_server_init(&S, sid, &scb, send_to_client, NULL);
     nc_auth_server_interactive(&S, &iacb);
-    nc_auth_client_buffer(&C, client_buf, sizeof(client_buf));
-    nc_auth_server_buffer(&S, server_buf, sizeof(server_buf));
+    nc_auth_client_buffer(&C, client_buf, BUFLEN);
+    nc_auth_server_buffer(&S, server_buf, BUFLEN);
     W.client = &C;
     W.server = &S;
 }
@@ -494,12 +502,12 @@ main(void)
           strcmp(account_pass, "swordfish-8842") == 0);
     nc_auth_clear(&S);
     check("8. no password left in the server buffer",
-          !contains(server_buf, sizeof(server_buf), "swordfish-8842"));
+          !contains(server_buf, BUFLEN, "swordfish-8842"));
     check("8. no password left in the server struct",
           !contains(&S, sizeof(S), "swordfish-8842"));
     nc_auth_clear(&C);
     check("8. no password left in the client buffer",
-          !contains(client_buf, sizeof(client_buf), "swordfish-8842"));
+          !contains(client_buf, BUFLEN, "swordfish-8842"));
     client_pass = "hunter2";
 
     /* 9. A denied conversation wipes as thoroughly as a cancelled one.
@@ -518,7 +526,7 @@ main(void)
     check("9. denial did not double-fire the callback", server_cancelled == 0);
     nc_auth_clear(&S);
     check("9. a denied conversation wipes",
-          !contains(server_buf, sizeof(server_buf), "swordfish-9931") &&
+          !contains(server_buf, BUFLEN, "swordfish-9931") &&
           !contains(&S, sizeof(S), "swordfish-9931"));
     client_pass = "hunter2";
 

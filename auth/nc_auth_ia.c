@@ -228,15 +228,21 @@ arena_str(struct arena *ar, const void *s, size_t n)
     return p;
 }
 
+/*
+ * The buffer belongs to the caller and may start at any address, so the
+ * padding has to come from the address the array will live at, not from the
+ * offset within the buffer.
+ */
 static void *
 arena_array(struct arena *ar, size_t count, size_t size)
 {
     size_t align = sizeof(void *);
-    size_t at = (ar->used + align - 1) & ~(align - 1);
+    uintptr_t addr = (uintptr_t)ar->buf + ar->used;
+    size_t at = ar->used + (size_t)(-addr & (uintptr_t)(align - 1));
 
     if (count == 0)
         return NULL;
-    if (at + count * size > ar->cap || count > ar->cap / size)
+    if (at > ar->cap || count > (ar->cap - at) / size)
         return NULL;
     ar->used = at + count * size;
     return ar->buf + at;

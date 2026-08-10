@@ -8,6 +8,18 @@ Releases are SemVer and are tagged `vMAJOR.MINOR.PATCH`. The tag is the
 release: GitHub serves a source snapshot for it, which is what
 `tools/vendor.sh` fetches.
 
+## Unreleased
+
+### Fixed
+
+- The interactive auth arena carves `struct nc_form_field` and friends out of
+  the buffer the caller supplies, and it aligned the offset within that buffer
+  rather than the address the array lands at. A caller whose buffer did not
+  start on a pointer boundary got misaligned structs, which UBSan reports and
+  which is undefined behaviour on any target. The arena now pads from the
+  address, so any buffer will do. `test_nc_auth_ia` hands over a deliberately
+  odd one.
+
 ## 0.9.1 - 2026-07-27
 
 A packaging and tooling release. The wire protocol, the source API and the
