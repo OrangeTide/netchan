@@ -27,7 +27,7 @@ A tag is an immutable commit, so the copier is the one that shipped with the
 release, and neither it nor what it fetches can change under you:
 
 ```sh
-TAG=v0.9.1    # whichever release you want
+TAG=v0.9.2    # whichever release you want
 curl -fsSL "https://raw.githubusercontent.com/OrangeTide/netchan/$TAG/tools/vendor.sh" \
   | sh -s -- --version "$TAG" --layer auth --dest third_party/netchan
 ```

@@ -8,7 +8,11 @@ Releases are SemVer and are tagged `vMAJOR.MINOR.PATCH`. The tag is the
 release: GitHub serves a source snapshot for it, which is what
 `tools/vendor.sh` fetches.
 
-## Unreleased
+## 0.9.2 - 2026-08-10
+
+A correctness release for the interactive auth method. The wire protocol and
+the source API are unchanged from 0.9.1, so a vendored copy can be replaced in
+place.
 
 ### Fixed
 
@@ -17,8 +21,18 @@ release: GitHub serves a source snapshot for it, which is what
   rather than the address the array lands at. A caller whose buffer did not
   start on a pointer boundary got misaligned structs, which UBSan reports and
   which is undefined behaviour on any target. The arena now pads from the
-  address, so any buffer will do. `test_nc_auth_ia` hands over a deliberately
-  odd one.
+  address, so any buffer will do, and no alignment is asked of the caller.
+  `test_nc_auth_ia` hands over a deliberately odd one.
+- The same function's bounds check could overflow. `at + count * size` is now
+  written as `count > (cap - at) / size`, with `at > cap` ruled out first.
+
+### Changed
+
+- The vendored `libiox` under `examples/` is the 0.1.0 release. It fixes timer
+  and signal state that was global rather than per loop, a `POLLNVAL` busy
+  spin, an unchecked `errno` in `iox_loop_run`, and timer id overflow, and it
+  adds Windows support. `examples/` is not part of any vendoring layer, so
+  this reaches nobody who takes netchan through `tools/vendor.sh`.
 
 ## 0.9.1 - 2026-07-27
 
