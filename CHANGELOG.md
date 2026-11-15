@@ -8,6 +8,25 @@ Releases are SemVer and are tagged `vMAJOR.MINOR.PATCH`. The tag is the
 release: GitHub serves a source snapshot for it, which is what
 `tools/vendor.sh` fetches.
 
+## 0.9.4 - 2026-11-14
+
+A correctness release for the service timers. The wire format is unchanged,
+so a vendored copy can be replaced in place.
+
+### Fixed
+
+- A just-connected peer could be closed at once by the idle timeout. netchan
+  stamps receive, send, and ping times from its own `nc_now_ms()` read inside
+  `netchan_feed`, while `netchan_service` is handed a `now_ms` the caller
+  sampled separately. When the monotonic clock advanced a millisecond between
+  those two reads, an unsigned `now_ms - last_recv_ms` underflowed to a huge
+  idle and tripped the idle timeout immediately. The same skew could trip the
+  connect-retry and keepalive timers and report a bogus RTT. All of these now
+  go through `nc_ms_since`, which treats a stamp in the near future as zero
+  elapsed. This showed up as an intermittent handshake failure on a loopback
+  socket, where the caller's `now_ms` and the feed's clock read fall on
+  opposite sides of a millisecond boundary.
+
 ## 0.9.3 - 2026-11-14
 
 A correctness release for the connection handshake. The wire format is

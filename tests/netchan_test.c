@@ -291,6 +291,59 @@ test_handshake_init_wrong_id(void)
     PASS();
 }
 
+/* netchan stamps last_recv_ms with its own nc_now_ms() read inside
+ * netchan_feed, while netchan_service is handed a now_ms the caller sampled
+ * separately. If that now_ms is even a millisecond behind the stamp, a raw
+ * unsigned now_ms - last_recv_ms underflows to a huge idle and the idle
+ * timeout closes a connection that just became live. Servicing a freshly
+ * connected client with a now_ms behind its receive stamp must leave it
+ * connected. */
+static void
+test_service_now_behind_recv(void)
+{
+    struct netchan_conn *client = netchan_open(0);
+    struct netchan_conn *server = netchan_open(1);
+
+    struct nc_addr caddr;
+    struct nc_addr saddr;
+    struct netchan_event ev;
+    uint8_t init[2048];
+    uint8_t acc[2048];
+    size_t ilen, alen;
+    TEST(service_now_behind_recv);
+    CHECK(client && server, "alloc failed");
+
+    caddr = make_addr(0x7f000001, 10000);
+    saddr = make_addr(0x7f000001, 20000);
+
+    netchan_connect(client, &saddr);
+    ilen = grab(client, init, sizeof(init));
+    CHECK(ilen > 0, "no init packet");
+    netchan_feed(server, init, ilen, &caddr);
+    netchan_accept(server);
+    while (netchan_poll(server, &ev)) {}
+    alen = grab(server, acc, sizeof(acc));
+    CHECK(alen > 0, "no accept packet");
+
+    /* The feed stamps last_recv_ms from the monotonic clock (seconds since
+     * boot), which is far ahead of the small now_ms below. */
+    netchan_feed(client, acc, alen, &saddr);
+    while (netchan_poll(client, &ev)) {}
+    CHECK(netchan_state(client) == NETCHAN_STATE_CONNECTED, "client not connected");
+
+    /* now_ms = 1 is well behind the receive stamp, the exact skew that used
+     * to underflow the idle computation and close the connection. */
+    netchan_service(client, 1);
+    CHECK(netchan_state(client) == NETCHAN_STATE_CONNECTED,
+          "idle timeout closed a just-connected client on a stale now_ms");
+    CHECK(!netchan_poll(client, &ev),
+          "service raised a spurious event on a stale now_ms");
+
+    netchan_close(client);
+    netchan_close(server);
+    PASS();
+}
+
 static void
 test_unreliable_datagram(void)
 {
@@ -1183,6 +1236,7 @@ main(void)
     test_handshake_dropped_accept();
     test_handshake_duplicate_accept();
     test_handshake_init_wrong_id();
+    test_service_now_behind_recv();
     test_unreliable_datagram();
     test_reliable_datagram();
     test_bidirectional_channels();

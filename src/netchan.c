@@ -121,6 +121,24 @@ nc_now_ms(void)
 }
 
 /*
+ * Milliseconds elapsed from a past timestamp to now, guarding against a
+ * stamp that reads slightly ahead of now_ms. A connection stamps receive,
+ * send, and ping times with nc_now_ms(), while netchan_service is handed a
+ * now_ms the caller sampled on its own. When the monotonic clock advances a
+ * millisecond between those two reads, a raw unsigned now_ms - stamp
+ * underflows to a huge value and trips a timeout at once: a peer that just
+ * connected hits the idle timeout, or a fresh send looks ancient. Treat any
+ * stamp in the near future as zero elapsed instead.
+ */
+static uint32_t
+nc_ms_since(uint32_t now_ms, uint32_t stamp)
+{
+    int32_t d = (int32_t)(now_ms - stamp);
+
+    return d < 0 ? 0u : (uint32_t)d;
+}
+
+/*
  * A connection id has to be unpredictable enough that a peer cannot guess
  * the next one, and it must differ between two processes that start at the
  * same moment. Nothing is authenticated by it.
@@ -757,7 +775,7 @@ process_pong(struct netchan_conn *c, const uint8_t *p, size_t len)
     opaque = rd32(p + 1);
     if (opaque == c->ping_opaque && c->ping_sent_ms) {
         uint32_t now = nc_now_ms();
-        c->rtt_ms = now - c->ping_sent_ms;
+        c->rtt_ms = nc_ms_since(now, c->ping_sent_ms);
         if (c->rtt_min_ms == 0 || c->rtt_ms < c->rtt_min_ms)
             c->rtt_min_ms = c->rtt_ms;
         c->ping_sent_ms = 0;
@@ -1450,7 +1468,7 @@ netchan_service(struct netchan_conn *c, uint32_t now_ms)
 
     /* connection handshake retry */
     if (c->state == NETCHAN_STATE_CONNECTING && !c->server) {
-        uint32_t elapsed = now_ms - c->connect_sent_ms;
+        uint32_t elapsed = nc_ms_since(now_ms, c->connect_sent_ms);
         int remain;
 
         if (elapsed >= NC_CONNECT_RETRY_MS) {
@@ -1470,7 +1488,7 @@ netchan_service(struct netchan_conn *c, uint32_t now_ms)
 
     /* idle timeout */
     if (c->state == NETCHAN_STATE_CONNECTED && c->last_recv_ms > 0) {
-        uint32_t idle = now_ms - c->last_recv_ms;
+        uint32_t idle = nc_ms_since(now_ms, c->last_recv_ms);
         int remain;
 
         if (idle >= c->cfg.idle_timeout_ms) {
@@ -1484,7 +1502,7 @@ netchan_service(struct netchan_conn *c, uint32_t now_ms)
 
     /* keepalive ping */
     if (c->state == NETCHAN_STATE_CONNECTED && c->last_send_ms > 0) {
-        uint32_t since_send = now_ms - c->last_send_ms;
+        uint32_t since_send = nc_ms_since(now_ms, c->last_send_ms);
         if (since_send >= NC_PING_INTERVAL_MS && c->ping_sent_ms == 0) {
             c->ping_opaque = nc_random_id();
             ctrl_ping(c, c->ping_opaque);
@@ -1509,7 +1527,7 @@ netchan_service(struct netchan_conn *c, uint32_t now_ms)
 
             timeout = c->cfg.retransmit_ms << (o->attempts - 1);
             if (timeout > NC_MAX_RT_MS) timeout = NC_MAX_RT_MS;
-            elapsed = now_ms - o->sent_ms;
+            elapsed = nc_ms_since(now_ms, o->sent_ms);
 
             if (elapsed >= timeout) {
                 if (o->attempts >= NC_MAX_RT_ATTEMPTS) {
