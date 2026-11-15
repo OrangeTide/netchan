@@ -635,6 +635,12 @@ process_connect_init(struct netchan_conn *c, const uint8_t *p, size_t len)
     if (c->state == NETCHAN_STATE_NEW) {
         c->local_id = nc_random_id();
         c->state = NETCHAN_STATE_CONNECTING;
+    } else if (c->state == NETCHAN_STATE_CONNECTED) {
+        /* The client is retransmitting CONNECT_INIT because it never saw our
+         * CONNECT_ACCEPT: the accept is a one-shot control frame, so a single
+         * lost packet otherwise strands the client in CONNECTING forever.
+         * Re-send the accept so the handshake tolerates a dropped accept. */
+        ctrl_connect_accept(c);
     }
     return 6;
 }
