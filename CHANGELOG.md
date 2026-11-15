@@ -8,7 +8,7 @@ Releases are SemVer and are tagged `vMAJOR.MINOR.PATCH`. The tag is the
 release: GitHub serves a source snapshot for it, which is what
 `tools/vendor.sh` fetches.
 
-## Unreleased
+## 0.9.3 - 2026-11-14
 
 A correctness release for the connection handshake. The wire format is
 unchanged, so a vendored copy can be replaced in place.
