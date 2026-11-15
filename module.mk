@@ -44,6 +44,21 @@ endif
 # not a line of code. See microchan/README.md.
 SUBDIRS += microchan
 
+# Optional language bindings, each off by default and each needing a
+# toolchain the core build does not. The directory is only descended into
+# when one is switched on. See bindings/README.md.
+NETCHAN_LUA ?= 0
+NETCHAN_PASCAL ?= 0
+ifneq ($(filter 1,$(NETCHAN_LUA) $(NETCHAN_PASCAL)),)
+SUBDIRS += bindings
+# A Lua C module is a shared object, and a Pascal program fpc links as a PIE,
+# so both need the library objects built position-independent. The core
+# build is left untouched when no binding is on. Build bindings from a clean
+# tree, or under their own VARIANT, so these objects never mix with a plain
+# non-PIC build in the same directory.
+PROJECT_CFLAGS += -fPIC
+endif
+
 # Style checking is not a build step: it compiles nothing and produces no
 # output file, so it stays a plain phony rule rather than a modular-make
 # target. It reads the tree through git ls-files, so it needs no file list

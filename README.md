@@ -75,6 +75,7 @@ either.
 | `third_party/` | vendored monocypher | — |
 | `tests/` | the test suite | — |
 | `examples/` | runnable programs, plus a vendored event loop they use | — |
+| `bindings/` | optional Lua and Free Pascal bindings (see below) | Lua or fpc |
 | `microchan/` | a second, incompatible library (see below) | — |
 
 Each layer builds without the ones above it. `src/` alone is a complete and
@@ -93,6 +94,17 @@ the APIs differ (`mc_*` against `netchan_*`), and `struct mc_addr` and
 `struct nc_addr` pack their bytes differently while meaning roughly the same
 thing. Nothing links both. What the two do share is the seam: a core that
 never names a socket.
+
+## Bindings
+
+[`bindings/`](bindings/README.md) drives netchan from Lua or Free Pascal. Both
+sit on one small C shim that wraps the libraries in opaque handles, so a
+binding never depends on a struct layout. They are off by default and each
+needs a toolchain the core build does not:
+
+```
+make NETCHAN_LUA=1 NETCHAN_PASCAL=1 run-tests
+```
 
 ## Build
 

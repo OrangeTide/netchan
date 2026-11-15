@@ -8,6 +8,18 @@ Releases are SemVer and are tagged `vMAJOR.MINOR.PATCH`. The tag is the
 release: GitHub serves a source snapshot for it, which is what
 `tools/vendor.sh` fetches.
 
+## Unreleased
+
+### Added
+
+- Optional Lua and Free Pascal bindings under `bindings/`, each off by default
+  and built only when asked with `make NETCHAN_LUA=1` or
+  `make NETCHAN_PASCAL=1`. Both sit on one flat C shim, `netchan_bind`, that
+  wraps the libraries in opaque handles and field accessors, so a binding
+  never depends on a netchan struct layout. The shim covers the protocol core,
+  the encrypted transport, discovery, the keystore, and the login
+  conversation. Nothing in the core build changes unless a binding is enabled.
+
 ## 0.10.0 - 2026-11-14
 
 A single-clock release. The wire format is unchanged, but the C API is not, so
