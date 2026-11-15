@@ -82,6 +82,16 @@ pump_both(struct netchan_conn *client, struct netchan_conn *server,
     }
 }
 
+/* Pull the next outgoing packet into caller memory instead of delivering it,
+ * so a test can drop it, re-deliver it, or inspect it. Returns its length, or
+ * 0 when nothing is queued. */
+static size_t
+grab(struct netchan_conn *from, uint8_t *buf, size_t buflen)
+{
+    struct nc_addr dst;
+    return netchan_send_next(from, buf, buflen, &dst);
+}
+
 /****************************************************************
  * Tests
  ****************************************************************/
@@ -123,6 +133,158 @@ test_handshake(void)
     /* drain client's CONNECTED event */
     CHECK(netchan_poll(client, &ev) && ev.type == NETCHAN_EV_CONNECTED,
           "no client connected event");
+
+    netchan_close(client);
+    netchan_close(server);
+    PASS();
+}
+
+/* A single lost CONNECT_ACCEPT must not strand the client: when the client
+ * retransmits CONNECT_INIT, a connected server re-sends the accept. */
+static void
+test_handshake_dropped_accept(void)
+{
+    struct netchan_conn *client = netchan_open(0);
+    struct netchan_conn *server = netchan_open(1);
+
+    struct nc_addr caddr;
+    struct nc_addr saddr;
+    struct netchan_event ev;
+    uint8_t init[2048];
+    uint8_t acc[2048];
+    size_t ilen, alen;
+    TEST(handshake_dropped_accept);
+    CHECK(client && server, "alloc failed");
+
+    caddr = make_addr(0x7f000001, 10000);
+    saddr = make_addr(0x7f000001, 20000);
+
+    netchan_connect(client, &saddr);
+
+    /* capture the client's CONNECT_INIT so we can replay it as a retransmit */
+    ilen = grab(client, init, sizeof(init));
+    CHECK(ilen > 0, "no init packet");
+    netchan_feed(server, init, ilen, &caddr);
+    CHECK(netchan_state(server) == NETCHAN_STATE_CONNECTING, "server not connecting");
+
+    netchan_accept(server);
+    CHECK(netchan_poll(server, &ev) && ev.type == NETCHAN_EV_CONNECTED,
+          "no server connected event");
+
+    /* drop the accept: pull it off the server and discard it */
+    alen = grab(server, acc, sizeof(acc));
+    CHECK(alen > 0, "no accept packet");
+    CHECK(netchan_state(client) == NETCHAN_STATE_CONNECTING, "client connected without accept");
+
+    /* client retransmits its INIT; a connected server must re-send the accept */
+    netchan_feed(server, init, ilen, &caddr);
+    alen = grab(server, acc, sizeof(acc));
+    CHECK(alen > 0, "server did not resend accept on duplicate init");
+
+    netchan_feed(client, acc, alen, &saddr);
+    CHECK(netchan_state(client) == NETCHAN_STATE_CONNECTED, "client not connected after resend");
+    CHECK(netchan_poll(client, &ev) && ev.type == NETCHAN_EV_CONNECTED,
+          "no client connected event after resend");
+
+    netchan_close(client);
+    netchan_close(server);
+    PASS();
+}
+
+/* Because the server can emit the accept more than once, processing a second
+ * CONNECT_ACCEPT must be idempotent: no extra NETCHAN_EV_CONNECTED. */
+static void
+test_handshake_duplicate_accept(void)
+{
+    struct netchan_conn *client = netchan_open(0);
+    struct netchan_conn *server = netchan_open(1);
+
+    struct nc_addr caddr;
+    struct nc_addr saddr;
+    struct netchan_event ev;
+    uint8_t init[2048];
+    uint8_t acc[2048];
+    size_t ilen, alen;
+    TEST(handshake_duplicate_accept);
+    CHECK(client && server, "alloc failed");
+
+    caddr = make_addr(0x7f000001, 10000);
+    saddr = make_addr(0x7f000001, 20000);
+
+    netchan_connect(client, &saddr);
+    ilen = grab(client, init, sizeof(init));
+    CHECK(ilen > 0, "no init packet");
+    netchan_feed(server, init, ilen, &caddr);
+    netchan_accept(server);
+    CHECK(netchan_poll(server, &ev) && ev.type == NETCHAN_EV_CONNECTED,
+          "no server connected event");
+
+    /* capture the accept, then deliver it twice */
+    alen = grab(server, acc, sizeof(acc));
+    CHECK(alen > 0, "no accept packet");
+
+    netchan_feed(client, acc, alen, &saddr);
+    CHECK(netchan_state(client) == NETCHAN_STATE_CONNECTED, "client not connected");
+    CHECK(netchan_poll(client, &ev) && ev.type == NETCHAN_EV_CONNECTED,
+          "no client connected event");
+
+    /* second, duplicate accept must be ignored */
+    netchan_feed(client, acc, alen, &saddr);
+    CHECK(netchan_state(client) == NETCHAN_STATE_CONNECTED, "client left connected state");
+    CHECK(!netchan_poll(client, &ev), "duplicate accept raised a second event");
+
+    netchan_close(client);
+    netchan_close(server);
+    PASS();
+}
+
+/* A CONNECT_INIT whose id does not match the established peer must not be
+ * answered or overwrite remote_id. A legitimate duplicate init is still
+ * answered, which shows the stored peer id survived the stray one. */
+static void
+test_handshake_init_wrong_id(void)
+{
+    struct netchan_conn *client = netchan_open(0);
+    struct netchan_conn *server = netchan_open(1);
+
+    struct nc_addr caddr;
+    struct nc_addr saddr;
+    struct netchan_event ev;
+    uint8_t init[2048];
+    uint8_t init_bad[2048];
+    uint8_t acc[2048];
+    size_t ilen, alen;
+    TEST(handshake_init_wrong_id);
+    CHECK(client && server, "alloc failed");
+
+    caddr = make_addr(0x7f000001, 10000);
+    saddr = make_addr(0x7f000001, 20000);
+
+    netchan_connect(client, &saddr);
+    ilen = grab(client, init, sizeof(init));
+    CHECK(ilen > 0, "no init packet");
+    netchan_feed(server, init, ilen, &caddr);
+    netchan_accept(server);
+    while (netchan_poll(server, &ev)) {}
+
+    alen = grab(server, acc, sizeof(acc));
+    CHECK(alen > 0, "no accept packet");
+    netchan_feed(client, acc, alen, &saddr);
+    while (netchan_poll(client, &ev)) {}
+    CHECK(netchan_state(client) == NETCHAN_STATE_CONNECTED, "client not connected");
+
+    /* forge an init with a different client id. The INIT packet is a 5-byte
+     * header followed by [type][client_id(4 BE)][version]; the frame's
+     * client_id sits at packet offset 6. */
+    memcpy(init_bad, init, ilen);
+    init_bad[6] ^= 0xff;
+
+    netchan_feed(server, init_bad, ilen, &caddr);
+    CHECK(grab(server, acc, sizeof(acc)) == 0, "server answered a stray init");
+
+    /* a real duplicate init is still answered, proving remote_id intact */
+    netchan_feed(server, init, ilen, &caddr);
+    CHECK(grab(server, acc, sizeof(acc)) > 0, "server lost its peer id after a stray init");
 
     netchan_close(client);
     netchan_close(server);
@@ -1018,6 +1180,9 @@ main(void)
     printf("netchan tests:\n");
 
     test_handshake();
+    test_handshake_dropped_accept();
+    test_handshake_duplicate_accept();
+    test_handshake_init_wrong_id();
     test_unreliable_datagram();
     test_reliable_datagram();
     test_bidirectional_channels();

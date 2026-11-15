@@ -631,15 +631,19 @@ process_connect_init(struct netchan_conn *c, const uint8_t *p, size_t len)
     client_id = rd32(p + 1);
     version = p[5];
     if (version != NC_VERSION) return NETCHAN_ERR_PROTO;
-    c->remote_id = client_id;
     if (c->state == NETCHAN_STATE_NEW) {
+        c->remote_id = client_id;
         c->local_id = nc_random_id();
         c->state = NETCHAN_STATE_CONNECTING;
-    } else if (c->state == NETCHAN_STATE_CONNECTED) {
+    } else if (c->state == NETCHAN_STATE_CONNECTED &&
+               client_id == c->remote_id) {
         /* The client is retransmitting CONNECT_INIT because it never saw our
          * CONNECT_ACCEPT: the accept is a one-shot control frame, so a single
          * lost packet otherwise strands the client in CONNECTING forever.
-         * Re-send the accept so the handshake tolerates a dropped accept. */
+         * Re-send the accept so the handshake tolerates a dropped accept.
+         * Only our established peer qualifies: a stray or spoofed INIT with a
+         * different id must not overwrite remote_id, or outgoing packets would
+         * carry the wrong conn_id and the real peer would reject them. */
         ctrl_connect_accept(c);
     }
     return 6;
@@ -658,6 +662,12 @@ process_connect_accept(struct netchan_conn *c, const uint8_t *p, size_t len)
     (void)version;
     idle = rd32(p + 6);
     (void)idle;
+    /* A server re-sends CONNECT_ACCEPT on a retransmitted INIT, so a client
+     * that already connected can see the accept more than once. Processing it
+     * again must be idempotent: ignore it once connected, or we would push a
+     * second NETCHAN_EV_CONNECTED for one connection. */
+    if (c->state == NETCHAN_STATE_CONNECTED)
+        return 10;
     c->remote_id = server_id;
     c->state = NETCHAN_STATE_CONNECTED;
     ev_push(c, NETCHAN_EV_CONNECTED, NULL);

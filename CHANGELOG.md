@@ -8,6 +8,28 @@ Releases are SemVer and are tagged `vMAJOR.MINOR.PATCH`. The tag is the
 release: GitHub serves a source snapshot for it, which is what
 `tools/vendor.sh` fetches.
 
+## Unreleased
+
+A correctness release for the connection handshake. The wire format is
+unchanged, so a vendored copy can be replaced in place.
+
+### Fixed
+
+- A single lost `CONNECT_ACCEPT` stranded the client in `CONNECTING` forever.
+  The client kept retransmitting `CONNECT_INIT`, but a server that had already
+  reached `CONNECTED` ignored the duplicate and never answered again. A
+  connected server now re-sends `CONNECT_ACCEPT` when its peer retransmits
+  `CONNECT_INIT`, so the handshake survives a dropped accept.
+- Processing `CONNECT_ACCEPT` is now idempotent. Because the server can emit the
+  accept more than once, a client that received it twice pushed a second
+  `NETCHAN_EV_CONNECTED` for one connection. The client now ignores the accept
+  once it is `CONNECTED`.
+- A `CONNECT_INIT` whose connection id did not match the established peer no
+  longer overwrites `remote_id` on a connected server. A stray or spoofed init
+  could otherwise redirect outgoing packets to the wrong id, which the real
+  peer then rejected, breaking a live session. Only an init from the established
+  peer re-sends the accept.
+
 ## 0.9.2 - 2026-08-10
 
 A correctness release for the interactive auth method. The wire protocol and
