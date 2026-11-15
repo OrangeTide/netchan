@@ -76,7 +76,7 @@ flush_out(struct secure_link *sl)
     socklen_t slen;
     size_t m;
 
-    while ((m = netchan_send_next(sl->conn, buf, sizeof(buf), &to)) != 0) {
+    while ((m = netchan_send_next(sl->conn, buf, sizeof(buf), &to, now_ms())) != 0) {
         const uint8_t *out = buf;
         size_t outlen = m;
 
@@ -207,11 +207,11 @@ on_readable(struct iox_loop *loop, int fd, unsigned events, void *arg)
         }
 
         if (sl->server && !sl->accepted) {
-            netchan_feed(sl->conn, data, dlen, &from);
+            netchan_feed(sl->conn, data, dlen, &from, now_ms());
             netchan_accept(sl->conn);
             sl->accepted = 1;
         } else {
-            netchan_feed(sl->conn, data, dlen, &from);
+            netchan_feed(sl->conn, data, dlen, &from, now_ms());
         }
     }
 

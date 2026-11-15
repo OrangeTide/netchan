@@ -121,14 +121,13 @@ nc_now_ms(void)
 }
 
 /*
- * Milliseconds elapsed from a past timestamp to now, guarding against a
- * stamp that reads slightly ahead of now_ms. A connection stamps receive,
- * send, and ping times with nc_now_ms(), while netchan_service is handed a
- * now_ms the caller sampled on its own. When the monotonic clock advances a
- * millisecond between those two reads, a raw unsigned now_ms - stamp
- * underflows to a huge value and trips a timeout at once: a peer that just
- * connected hits the idle timeout, or a fresh send looks ancient. Treat any
- * stamp in the near future as zero elapsed instead.
+ * Milliseconds elapsed from a past timestamp to now. Every stamp and every
+ * comparison now reads the one clock the caller supplies through
+ * netchan_feed, netchan_send_next, and netchan_service, held in c->now_ms, so
+ * a stamp is never ahead of now_ms unless the caller's clock runs backward
+ * between calls. This clamp is the guard against that: a stamp in the future
+ * reads as zero elapsed rather than underflowing an unsigned subtraction into
+ * a huge value that would trip a timeout at once.
  */
 static uint32_t
 nc_ms_since(uint32_t now_ms, uint32_t stamp)
@@ -266,6 +265,7 @@ struct netchan_conn {
     int      state;
     struct nc_addr peer_addr;
     uint16_t next_pkt_num;
+    uint32_t now_ms;
     uint32_t last_recv_ms;
     uint32_t last_send_ms;
     uint32_t connect_sent_ms;
@@ -774,8 +774,7 @@ process_pong(struct netchan_conn *c, const uint8_t *p, size_t len)
     if (len < 5) return NETCHAN_ERR_PROTO;
     opaque = rd32(p + 1);
     if (opaque == c->ping_opaque && c->ping_sent_ms) {
-        uint32_t now = nc_now_ms();
-        c->rtt_ms = nc_ms_since(now, c->ping_sent_ms);
+        c->rtt_ms = nc_ms_since(c->now_ms, c->ping_sent_ms);
         if (c->rtt_min_ms == 0 || c->rtt_ms < c->rtt_min_ms)
             c->rtt_min_ms = c->rtt_ms;
         c->ping_sent_ms = 0;
@@ -1217,7 +1216,10 @@ netchan_connect(struct netchan_conn *c, const struct nc_addr *addr)
     c->peer_addr = *addr;
     c->state = NETCHAN_STATE_CONNECTING;
     ctrl_connect_init(c);
-    c->connect_sent_ms = nc_now_ms();
+    /* Stamp from the caller's clock, carried in from the last feed, send, or
+     * service. Before the first of those it reads 0, which the connect-retry
+     * timer rebases to the real clock on its first run rather than firing. */
+    c->connect_sent_ms = c->now_ms;
     c->connect_attempts = 1;
     return NETCHAN_OK;
 }
@@ -1247,12 +1249,14 @@ netchan_peek_id(const void *pkt, size_t len)
 
 int
 netchan_feed(struct netchan_conn *c, const void *pkt, size_t len,
-             const struct nc_addr *from)
+             const struct nc_addr *from, uint32_t now_ms)
 {
     const uint8_t *p = pkt;
     uint32_t conn_id;
     size_t hdr_size;
     uint8_t flags;
+
+    c->now_ms = now_ms;
 
     if (len < NC_HDR_INIT_SIZE) return NETCHAN_ERR_PROTO;
 
@@ -1286,7 +1290,7 @@ netchan_feed(struct netchan_conn *c, const void *pkt, size_t len,
         c->peer_addr = *from;
     }
 
-    c->last_recv_ms = nc_now_ms();
+    c->last_recv_ms = c->now_ms;
     c->pkts_recv++;
     return parse_frames(c, p + hdr_size, len - hdr_size);
 }
@@ -1313,7 +1317,7 @@ chan_next_sendable(struct netchan_chan *ch)
 
 size_t
 netchan_send_next(struct netchan_conn *c, void *buf, size_t buflen,
-                  struct nc_addr *to)
+                  struct nc_addr *to, uint32_t now_ms)
 {
     uint8_t *p = buf;
     size_t hdr_size, pos, mtu;
@@ -1321,6 +1325,8 @@ netchan_send_next(struct netchan_conn *c, void *buf, size_t buflen,
     int is_init;
     /* nothing to send? check ctrl queue and channel data */
     int has_data = 0;
+
+    c->now_ms = now_ms;
 
     if (c->ctrl_len > 0)
         has_data = 1;
@@ -1433,7 +1439,7 @@ netchan_send_next(struct netchan_conn *c, void *buf, size_t buflen,
         pos += dlen;
 
         o->frag_sent++;
-        o->sent_ms = nc_now_ms();
+        o->sent_ms = c->now_ms;
         /* first transmission counts as attempt 1; retransmits are owned by
          * netchan_service, which bumps attempts -- don't reset it here or the
          * backoff never grows and a dead peer is never given up on. */
@@ -1456,7 +1462,7 @@ netchan_send_next(struct netchan_conn *c, void *buf, size_t buflen,
     if (to)
         *to = c->peer_addr;
 
-    c->last_send_ms = nc_now_ms();
+    c->last_send_ms = c->now_ms;
     c->pkts_sent++;
     return pos;
 }
@@ -1466,10 +1472,19 @@ netchan_service(struct netchan_conn *c, uint32_t now_ms)
 {
     int next_ms = -1;
 
+    c->now_ms = now_ms;
+
     /* connection handshake retry */
     if (c->state == NETCHAN_STATE_CONNECTING && !c->server) {
-        uint32_t elapsed = nc_ms_since(now_ms, c->connect_sent_ms);
+        uint32_t elapsed;
         int remain;
+
+        /* netchan_connect stamps from whatever clock it had, which is 0 when
+         * connect ran before any feed/send/service. Rebase to the real clock
+         * on the first service instead of reading a huge elapsed. */
+        if (c->connect_sent_ms == 0)
+            c->connect_sent_ms = now_ms;
+        elapsed = nc_ms_since(now_ms, c->connect_sent_ms);
 
         if (elapsed >= NC_CONNECT_RETRY_MS) {
             if (c->connect_attempts >= NC_CONNECT_RETRIES) {

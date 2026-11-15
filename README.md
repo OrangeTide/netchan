@@ -158,14 +158,14 @@ struct nc_addr to;
 size_t n;
 
 while (running) {
-    while ((n = netchan_send_next(c, pkt, sizeof pkt, &to)) > 0)
+    while ((n = netchan_send_next(c, pkt, sizeof pkt, &to, now_ms())) > 0)
         send_it_however_you_like(pkt, n, &to);
 
     int wait_ms = netchan_service(c, now_ms());
     /* ... wait for readability, up to wait_ms ... */
 
     if (got_a_datagram)
-        netchan_feed(c, rx, rxlen, &from);
+        netchan_feed(c, rx, rxlen, &from, now_ms());
 
     struct netchan_event ev;
     while (netchan_poll(c, &ev))
@@ -175,10 +175,16 @@ while (running) {
 
 /* Leaving: say so, send it, then free. */
 netchan_disconnect(c);
-while ((n = netchan_send_next(c, pkt, sizeof pkt, &to)) > 0)
+while ((n = netchan_send_next(c, pkt, sizeof pkt, &to, now_ms())) > 0)
     send_it_however_you_like(pkt, n, &to);
 netchan_close(c);
 ```
+
+`netchan_feed()`, `netchan_send_next()`, and `netchan_service()` each take
+`now_ms`, the current time in milliseconds. Draw it from one monotonic clock
+that never runs backward across calls, as `now_ms()` does above. netchan keeps
+every send, receive, and timer stamp on that one clock, so a timer measures
+real elapsed time no matter when each call ran.
 
 `netchan_close()` frees the connection and tells the peer nothing, and netchan
 owns no socket, so the DISCONNECT that `netchan_disconnect()` queues goes

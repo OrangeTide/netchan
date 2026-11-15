@@ -16,8 +16,19 @@
 #include <sys/socket.h>
 #include <poll.h>
 #include <unistd.h>
+#include <time.h>
 
 static int tests_run, tests_passed;
+
+/* netchan takes the time at every feed, send, and service call. These tests
+ * drive real sockets, so use the same monotonic clock the library expects. */
+static uint32_t
+now_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint32_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
+}
 
 #define TEST(name) do { tests_run++; printf("  %-46s ", name); fflush(stdout); } while (0)
 #define PASS()     do { tests_passed++; printf("OK\n"); } while (0)
@@ -102,7 +113,7 @@ flush(int fd, struct netchan_conn *c)
         socklen_t sl;
         size_t n;
 
-        n = netchan_send_next(c, buf, sizeof(buf), &dst);
+        n = netchan_send_next(c, buf, sizeof(buf), &dst, now_ms());
         if (n == 0) break;
         sl = nc_udp_to_sockaddr(&dst, &ss);
         if (sl == 0) continue;
@@ -142,7 +153,7 @@ drain(int fd, struct netchan_conn *c)
                      (struct sockaddr *)&from, &fl);
         if (n <= 0) break;
         nc_udp_from_sockaddr(&a, (struct sockaddr *)&from, fl);
-        netchan_feed(c, pkt, (size_t)n, &a);
+        netchan_feed(c, pkt, (size_t)n, &a, now_ms());
         got++;
         fl = sizeof(from);
     }

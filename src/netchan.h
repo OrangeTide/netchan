@@ -21,9 +21,9 @@
  * CHANGELOG.md.
  */
 #define NETCHAN_VERSION_MAJOR 0
-#define NETCHAN_VERSION_MINOR 9
-#define NETCHAN_VERSION_PATCH 4
-#define NETCHAN_VERSION_STRING "0.9.4"
+#define NETCHAN_VERSION_MINOR 10
+#define NETCHAN_VERSION_PATCH 0
+#define NETCHAN_VERSION_STRING "0.10.0"
 
 /** The version as one comparable integer, e.g. 0.5.0 is 500. Use it to
  *  compile against more than one release: NETCHAN_VERSION >= 500. */
@@ -156,17 +156,30 @@ int netchan_accept(struct netchan_conn *c);
 /** Extract connection ID from a raw packet without full parsing. */
 uint32_t netchan_peek_id(const void *pkt, size_t len);
 
+/*
+ * Clock contract. netchan_feed, netchan_send_next, and netchan_service each
+ * take now_ms, a count of milliseconds from a fixed point. The three must
+ * draw it from one monotonic source that never runs backward across calls
+ * (CLOCK_MONOTONIC or the like). It need not match any wall clock or the
+ * library's own internal reads; it only has to be consistent with itself.
+ * Every send, receive, and timer stamp is kept and compared on this one
+ * clock, so a timer measures real elapsed time no matter when each call ran.
+ */
+
 /** Feed a received datagram into the connection. `from` is the transport
- *  address it arrived from (NULL if the transport has no source address). */
+ *  address it arrived from (NULL if the transport has no source address).
+ *  `now_ms` is the current time on the caller's clock (see Clock contract). */
 int netchan_feed(struct netchan_conn *c, const void *pkt, size_t len,
-                 const struct nc_addr *from);
+                 const struct nc_addr *from, uint32_t now_ms);
 
 /** Get next outgoing packet. Returns byte count, 0 when nothing pending.
- *  `to` receives the peer's transport address. */
+ *  `to` receives the peer's transport address. `now_ms` is the current time
+ *  on the caller's clock (see Clock contract). */
 size_t netchan_send_next(struct netchan_conn *c, void *buf, size_t buflen,
-                         struct nc_addr *to);
+                         struct nc_addr *to, uint32_t now_ms);
 
-/** Service timers. Returns ms until the next needed call, or NETCHAN_ERR
+/** Service timers. `now_ms` is the current time on the caller's clock (see
+ *  Clock contract). Returns ms until the next needed call, or NETCHAN_ERR
  *  when idle. */
 int netchan_service(struct netchan_conn *c, uint32_t now_ms);
 

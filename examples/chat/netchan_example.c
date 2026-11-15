@@ -84,7 +84,7 @@ flush_sends(int fd, struct netchan_conn *conn)
         socklen_t sl;
         size_t n;
 
-        n = netchan_send_next(conn, buf, sizeof(buf), &dst);
+        n = netchan_send_next(conn, buf, sizeof(buf), &dst, now_ms());
         if (n == 0) break;
         sl = nc_udp_to_sockaddr(&dst, &ss);
         if (sl == 0) continue;
@@ -160,7 +160,7 @@ run_server(void)
 
             if (slot >= 0) {
                 /* existing peer */
-                netchan_feed(peers[slot].conn, pkt, (size_t)n, &naddr);
+                netchan_feed(peers[slot].conn, pkt, (size_t)n, &naddr, now_ms());
             } else {
                 /* new connection attempt: find a free slot */
                 for (int i = 0; i < MAX_PEERS; i++) {
@@ -174,7 +174,7 @@ run_server(void)
                     goto service;
                 }
                 peers[slot].conn = netchan_open(1);
-                netchan_feed(peers[slot].conn, pkt, (size_t)n, &naddr);
+                netchan_feed(peers[slot].conn, pkt, (size_t)n, &naddr, now_ms());
                 netchan_accept(peers[slot].conn);
                 peers[slot].active = 1;
                 snprintf(peers[slot].name, sizeof(peers[slot].name),
@@ -328,7 +328,7 @@ run_client(const char *name)
                 struct nc_addr naddr;
                 nc_udp_from_sockaddr(&naddr, (struct sockaddr *)&from,
                                      fromlen);
-                netchan_feed(conn, pkt, (size_t)n, &naddr);
+                netchan_feed(conn, pkt, (size_t)n, &naddr, now_ms());
             }
         }
 

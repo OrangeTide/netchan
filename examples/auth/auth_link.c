@@ -109,7 +109,7 @@ flush_out(struct auth_link *al)
     socklen_t slen;
     size_t m;
 
-    while ((m = netchan_send_next(al->conn, buf, sizeof(buf), &to)) != 0) {
+    while ((m = netchan_send_next(al->conn, buf, sizeof(buf), &to, now_ms())) != 0) {
         long sn = nc_crypto_seal(&al->crypto, buf, m, sealed, sizeof(sealed));
 
         if (sn < 0)
@@ -341,11 +341,11 @@ on_readable(struct iox_loop *loop, int fd, unsigned events, void *arg)
             continue;   /* HELLO consumed, replay, or bad auth */
 
         if (al->server && !al->accepted) {
-            netchan_feed(al->conn, plain, (size_t)pn, &from);
+            netchan_feed(al->conn, plain, (size_t)pn, &from, now_ms());
             netchan_accept(al->conn);
             al->accepted = 1;
         } else {
-            netchan_feed(al->conn, plain, (size_t)pn, &from);
+            netchan_feed(al->conn, plain, (size_t)pn, &from, now_ms());
         }
     }
 

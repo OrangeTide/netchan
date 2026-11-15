@@ -52,6 +52,15 @@ make_addr(uint16_t port)
     return a;
 }
 
+/* This demo never services timers, so it only has to hand the clock argument
+ * a value that never moves backward. A tick per call does that. */
+static uint32_t
+now_ms(void)
+{
+    static uint32_t t;
+    return ++t;
+}
+
 /* Move every queued datagram from one connection to the other. */
 static void
 pump(struct netchan_conn *from, struct netchan_conn *to,
@@ -61,8 +70,8 @@ pump(struct netchan_conn *from, struct netchan_conn *to,
     struct nc_addr dst;
     size_t n;
 
-    while ((n = netchan_send_next(from, buf, sizeof(buf), &dst)) != 0)
-        netchan_feed(to, buf, n, from_addr);
+    while ((n = netchan_send_next(from, buf, sizeof(buf), &dst, now_ms())) != 0)
+        netchan_feed(to, buf, n, from_addr, now_ms());
 }
 
 static void

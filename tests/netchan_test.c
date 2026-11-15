@@ -54,6 +54,11 @@ make_addr(uint32_t ip, uint16_t port)
  * Loopback -- pump packets between client and server
  ****************************************************************/
 
+/* One clock for the whole loopback. netchan now takes the time at every feed,
+ * send, and service call, so the helpers read it from here. Most tests never
+ * advance it; the ones that exercise timers set it before the call. */
+static uint32_t g_now;
+
 static int
 pump(struct netchan_conn *from, struct netchan_conn *to,
      const struct nc_addr *from_addr)
@@ -63,9 +68,9 @@ pump(struct netchan_conn *from, struct netchan_conn *to,
     int count = 0;
 
     for (;;) {
-        size_t n = netchan_send_next(from, buf, sizeof(buf), &dst);
+        size_t n = netchan_send_next(from, buf, sizeof(buf), &dst, g_now);
         if (n == 0) break;
-        netchan_feed(to, buf, n, from_addr);
+        netchan_feed(to, buf, n, from_addr, g_now);
         count++;
     }
     return count;
@@ -89,7 +94,7 @@ static size_t
 grab(struct netchan_conn *from, uint8_t *buf, size_t buflen)
 {
     struct nc_addr dst;
-    return netchan_send_next(from, buf, buflen, &dst);
+    return netchan_send_next(from, buf, buflen, &dst, g_now);
 }
 
 /****************************************************************
@@ -164,7 +169,7 @@ test_handshake_dropped_accept(void)
     /* capture the client's CONNECT_INIT so we can replay it as a retransmit */
     ilen = grab(client, init, sizeof(init));
     CHECK(ilen > 0, "no init packet");
-    netchan_feed(server, init, ilen, &caddr);
+    netchan_feed(server, init, ilen, &caddr, g_now);
     CHECK(netchan_state(server) == NETCHAN_STATE_CONNECTING, "server not connecting");
 
     netchan_accept(server);
@@ -177,11 +182,11 @@ test_handshake_dropped_accept(void)
     CHECK(netchan_state(client) == NETCHAN_STATE_CONNECTING, "client connected without accept");
 
     /* client retransmits its INIT; a connected server must re-send the accept */
-    netchan_feed(server, init, ilen, &caddr);
+    netchan_feed(server, init, ilen, &caddr, g_now);
     alen = grab(server, acc, sizeof(acc));
     CHECK(alen > 0, "server did not resend accept on duplicate init");
 
-    netchan_feed(client, acc, alen, &saddr);
+    netchan_feed(client, acc, alen, &saddr, g_now);
     CHECK(netchan_state(client) == NETCHAN_STATE_CONNECTED, "client not connected after resend");
     CHECK(netchan_poll(client, &ev) && ev.type == NETCHAN_EV_CONNECTED,
           "no client connected event after resend");
@@ -214,7 +219,7 @@ test_handshake_duplicate_accept(void)
     netchan_connect(client, &saddr);
     ilen = grab(client, init, sizeof(init));
     CHECK(ilen > 0, "no init packet");
-    netchan_feed(server, init, ilen, &caddr);
+    netchan_feed(server, init, ilen, &caddr, g_now);
     netchan_accept(server);
     CHECK(netchan_poll(server, &ev) && ev.type == NETCHAN_EV_CONNECTED,
           "no server connected event");
@@ -223,13 +228,13 @@ test_handshake_duplicate_accept(void)
     alen = grab(server, acc, sizeof(acc));
     CHECK(alen > 0, "no accept packet");
 
-    netchan_feed(client, acc, alen, &saddr);
+    netchan_feed(client, acc, alen, &saddr, g_now);
     CHECK(netchan_state(client) == NETCHAN_STATE_CONNECTED, "client not connected");
     CHECK(netchan_poll(client, &ev) && ev.type == NETCHAN_EV_CONNECTED,
           "no client connected event");
 
     /* second, duplicate accept must be ignored */
-    netchan_feed(client, acc, alen, &saddr);
+    netchan_feed(client, acc, alen, &saddr, g_now);
     CHECK(netchan_state(client) == NETCHAN_STATE_CONNECTED, "client left connected state");
     CHECK(!netchan_poll(client, &ev), "duplicate accept raised a second event");
 
@@ -263,13 +268,13 @@ test_handshake_init_wrong_id(void)
     netchan_connect(client, &saddr);
     ilen = grab(client, init, sizeof(init));
     CHECK(ilen > 0, "no init packet");
-    netchan_feed(server, init, ilen, &caddr);
+    netchan_feed(server, init, ilen, &caddr, g_now);
     netchan_accept(server);
     while (netchan_poll(server, &ev)) {}
 
     alen = grab(server, acc, sizeof(acc));
     CHECK(alen > 0, "no accept packet");
-    netchan_feed(client, acc, alen, &saddr);
+    netchan_feed(client, acc, alen, &saddr, g_now);
     while (netchan_poll(client, &ev)) {}
     CHECK(netchan_state(client) == NETCHAN_STATE_CONNECTED, "client not connected");
 
@@ -279,11 +284,11 @@ test_handshake_init_wrong_id(void)
     memcpy(init_bad, init, ilen);
     init_bad[6] ^= 0xff;
 
-    netchan_feed(server, init_bad, ilen, &caddr);
+    netchan_feed(server, init_bad, ilen, &caddr, g_now);
     CHECK(grab(server, acc, sizeof(acc)) == 0, "server answered a stray init");
 
     /* a real duplicate init is still answered, proving remote_id intact */
-    netchan_feed(server, init, ilen, &caddr);
+    netchan_feed(server, init, ilen, &caddr, g_now);
     CHECK(grab(server, acc, sizeof(acc)) > 0, "server lost its peer id after a stray init");
 
     netchan_close(client);
@@ -291,13 +296,13 @@ test_handshake_init_wrong_id(void)
     PASS();
 }
 
-/* netchan stamps last_recv_ms with its own nc_now_ms() read inside
- * netchan_feed, while netchan_service is handed a now_ms the caller sampled
- * separately. If that now_ms is even a millisecond behind the stamp, a raw
- * unsigned now_ms - last_recv_ms underflows to a huge idle and the idle
- * timeout closes a connection that just became live. Servicing a freshly
- * connected client with a now_ms behind its receive stamp must leave it
- * connected. */
+/* netchan stamps last_recv_ms from the now_ms handed to netchan_feed and
+ * compares it against the now_ms handed to netchan_service. If the caller's
+ * clock runs backward between the two, so service sees a now_ms below the
+ * receive stamp, a raw unsigned now_ms - last_recv_ms underflows to a huge
+ * idle and the idle timeout closes a connection that just became live.
+ * Servicing a freshly connected client with a now_ms behind its receive
+ * stamp must leave it connected. */
 static void
 test_service_now_behind_recv(void)
 {
@@ -319,26 +324,29 @@ test_service_now_behind_recv(void)
     netchan_connect(client, &saddr);
     ilen = grab(client, init, sizeof(init));
     CHECK(ilen > 0, "no init packet");
-    netchan_feed(server, init, ilen, &caddr);
+    netchan_feed(server, init, ilen, &caddr, g_now);
     netchan_accept(server);
     while (netchan_poll(server, &ev)) {}
     alen = grab(server, acc, sizeof(acc));
     CHECK(alen > 0, "no accept packet");
 
-    /* The feed stamps last_recv_ms from the monotonic clock (seconds since
-     * boot), which is far ahead of the small now_ms below. */
-    netchan_feed(client, acc, alen, &saddr);
+    /* Feed the accept at a high now_ms, so last_recv_ms is far ahead of the
+     * small now_ms the service call sees below. */
+    g_now = 100000;
+    netchan_feed(client, acc, alen, &saddr, g_now);
     while (netchan_poll(client, &ev)) {}
     CHECK(netchan_state(client) == NETCHAN_STATE_CONNECTED, "client not connected");
 
-    /* now_ms = 1 is well behind the receive stamp, the exact skew that used
-     * to underflow the idle computation and close the connection. */
+    /* now_ms = 1 is well behind the receive stamp, as if the caller's clock
+     * ran backward. That skew used to underflow the idle computation and
+     * close the connection. */
     netchan_service(client, 1);
     CHECK(netchan_state(client) == NETCHAN_STATE_CONNECTED,
           "idle timeout closed a just-connected client on a stale now_ms");
     CHECK(!netchan_poll(client, &ev),
           "service raised a spurious event on a stale now_ms");
 
+    g_now = 0;
     netchan_close(client);
     netchan_close(server);
     PASS();
@@ -905,11 +913,11 @@ test_duplicate_disconnect(void)
      * second time, the way a duplicating network would. */
 
     netchan_disconnect(client);
-    byelen = netchan_send_next(client, bye, sizeof(bye), &to);
+    byelen = netchan_send_next(client, bye, sizeof(bye), &to, g_now);
     CHECK(byelen != 0, "disconnect queued no frame");
 
     events = 0;
-    netchan_feed(server, bye, byelen, &caddr);
+    netchan_feed(server, bye, byelen, &caddr, g_now);
     while (netchan_poll(server, &ev))
         if (ev.type == NETCHAN_EV_DISCONNECTED)
             events++;
@@ -917,7 +925,7 @@ test_duplicate_disconnect(void)
     CHECK(netchan_state(server) == NETCHAN_STATE_CLOSED,
           "server did not reach CLOSED");
 
-    netchan_feed(server, bye, byelen, &caddr);
+    netchan_feed(server, bye, byelen, &caddr, g_now);
     while (netchan_poll(server, &ev))
         if (ev.type == NETCHAN_EV_DISCONNECTED)
             events++;
@@ -960,7 +968,7 @@ test_disconnect_outside_connected(void)
     netchan_disconnect(client);
     CHECK(netchan_state(client) == NETCHAN_STATE_NEW,
           "disconnect moved a NEW conn");
-    CHECK(netchan_send_next(client, buf, sizeof(buf), &to) == 0,
+    CHECK(netchan_send_next(client, buf, sizeof(buf), &to, g_now) == 0,
           "disconnect queued a frame on a NEW conn");
 
     /* CONNECTING: hold the connect frame rather than delivering it, so the
@@ -968,28 +976,28 @@ test_disconnect_outside_connected(void)
      * doing.  The frame is delivered below to finish the handshake. */
 
     netchan_connect(client, &saddr);
-    initlen = netchan_send_next(client, init, sizeof(init), &to);
+    initlen = netchan_send_next(client, init, sizeof(init), &to, g_now);
     CHECK(initlen != 0, "connect queued no frame");
     netchan_disconnect(client);
     CHECK(netchan_state(client) == NETCHAN_STATE_CONNECTING,
           "disconnect moved a CONNECTING conn");
-    CHECK(netchan_send_next(client, buf, sizeof(buf), &to) == 0,
+    CHECK(netchan_send_next(client, buf, sizeof(buf), &to, g_now) == 0,
           "disconnect queued a frame mid-handshake");
 
     /* Finish the handshake, then disconnect for real. */
-    netchan_feed(server, init, initlen, &caddr);
+    netchan_feed(server, init, initlen, &caddr, g_now);
     netchan_accept(server);
     pump_both(client, server, &caddr, &saddr);
     netchan_disconnect(client);
     CHECK(netchan_state(client) == NETCHAN_STATE_CLOSING,
           "disconnect did not enter CLOSING");
-    while (netchan_send_next(client, buf, sizeof(buf), &to) != 0) {}
+    while (netchan_send_next(client, buf, sizeof(buf), &to, g_now) != 0) {}
 
     /* CLOSING: a second call adds nothing. */
     netchan_disconnect(client);
     CHECK(netchan_state(client) == NETCHAN_STATE_CLOSING,
           "a second disconnect moved the conn");
-    CHECK(netchan_send_next(client, buf, sizeof(buf), &to) == 0,
+    CHECK(netchan_send_next(client, buf, sizeof(buf), &to, g_now) == 0,
           "a second disconnect queued another frame");
 
     netchan_close(client);

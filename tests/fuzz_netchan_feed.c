@@ -18,11 +18,10 @@
  *   service            run the timers, which is where retransmission lives
  *   send_next          build a reply, which exercises the send path too
  *
- * The clock is not read from the machine. netchan_service takes the time as
- * an argument, and the fuzzer supplies it from the input, so a crash replays
- * from its corpus file rather than depending on when it ran. netchan_feed
- * still stamps last_recv_ms from the real clock internally, which affects
- * only timeout arithmetic, not parsing.
+ * The clock is not read from the machine. netchan_feed, netchan_send_next,
+ * and netchan_service all take the time as an argument, and the fuzzer
+ * supplies the one value from the input, so a crash replays from its corpus
+ * file rather than depending on when it ran.
  *
  * Build:
  *   clang -fsanitize=fuzzer,address,undefined -Isrc -Itransport \
@@ -89,7 +88,7 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     from.a[5] = 0x27;
     from.a[6] = 0x10;
 
-    netchan_feed(c, data, size, &from);
+    netchan_feed(c, data, size, &from, now);
 
     while (netchan_poll(c, &ev)) {
         if (ev.ch) {
@@ -104,7 +103,7 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 
     for (;;) {
         struct nc_addr to;
-        size_t n = netchan_send_next(c, out, sizeof(out), &to);
+        size_t n = netchan_send_next(c, out, sizeof(out), &to, now);
 
         if (n == 0)
             break;

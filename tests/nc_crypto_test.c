@@ -7,6 +7,15 @@
 
 static int tests_run, tests_passed;
 
+/* These tests never service timers; the clock argument only has to never move
+ * backward. A tick per call does that. */
+static uint32_t
+now_ms(void)
+{
+    static uint32_t t;
+    return ++t;
+}
+
 #define TEST(name) do { tests_run++; printf("  %-46s ", name); fflush(stdout); } while (0)
 #define PASS()     do { tests_passed++; printf("OK\n"); } while (0)
 #define FAIL(msg)  do { printf("FAIL: %s\n", msg); return; } while (0)
@@ -50,13 +59,13 @@ cpump(struct netchan_conn *from, struct nc_crypto *fc,
         long sn, pn;
         size_t n;
 
-        n = netchan_send_next(from, buf, sizeof(buf), &dst);
+        n = netchan_send_next(from, buf, sizeof(buf), &dst, now_ms());
         if (n == 0) break;
         sn = nc_crypto_seal(fc, buf, n, sealed, sizeof(sealed));
         if (sn < 0) break;
         pn = nc_crypto_open(tc, sealed, (size_t)sn, plain, sizeof(plain));
         if (pn > 0)
-            netchan_feed(to, plain, (size_t)pn, from_addr);
+            netchan_feed(to, plain, (size_t)pn, from_addr, now_ms());
         count++;
     }
     return count;

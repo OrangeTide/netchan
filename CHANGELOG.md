@@ -8,6 +8,25 @@ Releases are SemVer and are tagged `vMAJOR.MINOR.PATCH`. The tag is the
 release: GitHub serves a source snapshot for it, which is what
 `tools/vendor.sh` fetches.
 
+## 0.10.0 - 2026-11-14
+
+A single-clock release. The wire format is unchanged, but the C API is not, so
+a vendored copy cannot be dropped in without touching call sites.
+
+### Changed
+
+- `netchan_feed` and `netchan_send_next` each take a new `now_ms` argument, the
+  same millisecond clock `netchan_service` already took. Before this, feed and
+  send stamped receive and send times from the library's own `nc_now_ms()`
+  while service compared them against the caller's `now_ms`. The two were a
+  millisecond apart often enough to underflow a timer, which 0.9.4 patched with
+  a per-comparison clamp. The clock is now the caller's at every entry point,
+  held on the connection and read everywhere, so stamps and comparisons share
+  one source. The clamp stays as a guard against a caller whose clock runs
+  backward. Callers must add `now_ms` to every `netchan_feed` and
+  `netchan_send_next` call. The clock must be one monotonic source that never
+  runs backward across calls; it need not match any wall clock.
+
 ## 0.9.4 - 2026-11-14
 
 A correctness release for the service timers. The wire format is unchanged,
