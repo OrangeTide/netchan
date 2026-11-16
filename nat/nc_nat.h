@@ -32,7 +32,7 @@
  * useful when a port is already forwarded, or behind a NAT friendly enough that
  * the outgoing STUN packet leaves the door ajar. Punching through a router that
  * will not cooperate needs a rendezvous server and both peers sending at once,
- * which is a larger thing built on the CONNECT_REDIRECT frame. See TODO.md.
+ * which is a larger thing built on the CONNECT_REDIRECT frame.
  *
  * A room code is an address, not a secret. Anyone it is given to, or who reads
  * it off a stream, learns where you are. Treat it like your address.

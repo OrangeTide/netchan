@@ -117,6 +117,5 @@ other's. The groundwork is present. The `CONNECT_REDIRECT` frame and the
 peer to another, and `nc_addr` stays opaque throughout, so the punched path can
 be v4 or v6 without the mechanism caring. What is missing is the rendezvous
 server, the both-sides-at-once timing, and the retry policy for the first packets
-crossing in flight. That is written down in `TODO.md` as the direction these
-helpers point at, so the choice to stop at address learning for now stays an
-informed one.
+crossing in flight. That is the direction these helpers point at, so the choice
+to stop at address learning for now stays an informed one.

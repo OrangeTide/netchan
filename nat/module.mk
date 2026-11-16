@@ -10,7 +10,7 @@
 #
 # This is address learning, not NAT traversal: a STUN reply tells you your
 # public address, it does not open a closed router's port. See
-# docs/content/nat/ and TODO.md.
+# docs/content/nat/.
 
 ROOT := $(dir $(lastword $(MAKEFILE_LIST)))
 

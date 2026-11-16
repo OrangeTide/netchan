@@ -25,8 +25,7 @@ release: GitHub serves a source snapshot for it, which is what
   `struct nc_addr`, so the layer depends on nothing else in netchan and can be
   vendored alone. This is address learning, not NAT traversal: a STUN reply
   does not open a closed router's port. Opening one is the caller's, and hole
-  punching over `CONNECT_REDIRECT` is recorded in `TODO.md` as the direction
-  these helpers point at.
+  punching over `CONNECT_REDIRECT` is the direction these helpers point at.
 
 ## 0.11.0 - 2026-11-15
 
