@@ -96,7 +96,7 @@ read_mapped_ipv4(int type, const uint8_t *v, int len,
 int
 nc_stun_parse_response(const void *pkt, size_t len,
                        const uint8_t txn[NC_STUN_TXN_LEN],
-                       uint32_t *ipv4_out, uint16_t *port_out)
+                       struct nc_addr *out)
 {
     const uint8_t *buf = pkt;
     int body, end, i;
@@ -141,8 +141,7 @@ nc_stun_parse_response(const void *pkt, size_t len,
     }
     if (!found)
         return NC_NAT_ERR;
-    *ipv4_out = ip;
-    *port_out = port;
+    nc_addr_set_ipv4(out, ip, port);
     return NC_NAT_OK;
 }
 
@@ -171,12 +170,16 @@ room_check(uint64_t v)
 }
 
 long
-nc_roomcode_encode(char *out, size_t outlen, uint32_t ipv4, uint16_t port)
+nc_roomcode_encode(char *out, size_t outlen, const struct nc_addr *addr)
 {
     uint64_t v;
+    uint32_t ipv4;
+    uint16_t port;
     int i, n = 0;
 
     if (outlen < NC_ROOMCODE_BUFSIZE)
+        return NC_NAT_ERR;
+    if (!nc_addr_get_ipv4(addr, &ipv4, &port))
         return NC_NAT_ERR;
     v = (uint64_t)ipv4 << 16 | port;
     v = v << 12 | room_check(v);
@@ -207,7 +210,7 @@ room_symbol(char c)
 }
 
 int
-nc_roomcode_decode(const char *code, uint32_t *ipv4_out, uint16_t *port_out)
+nc_roomcode_decode(const char *code, struct nc_addr *out)
 {
     uint64_t v = 0;
     const char *s;
@@ -225,7 +228,6 @@ nc_roomcode_decode(const char *code, uint32_t *ipv4_out, uint16_t *port_out)
     }
     if (n != NC_ROOMCODE_LEN || room_check(v >> 12) != (v & 0xfff))
         return NC_NAT_ERR;
-    *ipv4_out = (uint32_t)(v >> 28);
-    *port_out = (uint16_t)(v >> 12);
+    nc_addr_set_ipv4(out, (uint32_t)(v >> 28), (uint16_t)(v >> 12));
     return NC_NAT_OK;
 }

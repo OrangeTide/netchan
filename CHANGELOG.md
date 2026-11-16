@@ -16,16 +16,19 @@ release: GitHub serves a source snapshot for it, which is what
   server behind a home router. Like discovery it is a sibling of the core
   rather than a feature of it: it opens no socket and runs no timer.
   `nc_stun_build_request` / `nc_stun_parse_response` build a STUN binding
-  request and read the public IPv4 and port back out of the reply, so a host
-  learns the address a friend has to type; the caller owns the socket, the
+  request and read the public address back out of the reply, so a host learns
+  the address a friend has to type; the caller owns the socket, the
   retransmission, and the timeout. `nc_roomcode_encode` / `nc_roomcode_decode`
-  write that address and port as a twelve-character Crockford base-32 string
-  with a 12-bit check against typos, and read it back, folding the dashes,
-  case, and O/I/L a person mistypes. Both speak raw IPv4 and port rather than
-  `struct nc_addr`, so the layer depends on nothing else in netchan and can be
-  vendored alone. This is address learning, not NAT traversal: a STUN reply
-  does not open a closed router's port. Opening one is the caller's, and hole
-  punching over `CONNECT_REDIRECT` is the direction these helpers point at.
+  write that address as a twelve-character Crockford base-32 string with a
+  12-bit check against typos, and read it back, folding the dashes, case, and
+  O/I/L a person mistypes. Both speak `struct nc_addr`, the address type the
+  rest of netchan trades in, so an address STUN learns or a room code decodes
+  drops straight into `netchan_connect` or a `CONNECT_REDIRECT` frame; the one
+  packing of an IPv4 address into an `nc_addr` now lives in `src/nc_addr.h`,
+  shared by `nc_udp`, the redirect frame, and this layer. This is address
+  learning, not NAT traversal: a STUN reply does not open a closed router's
+  port. Opening one is the caller's, and hole punching over `CONNECT_REDIRECT`
+  is the direction these helpers point at.
 
 ## 0.11.0 - 2026-11-15
 

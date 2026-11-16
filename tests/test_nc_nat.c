@@ -74,6 +74,42 @@ build_response(uint8_t *buf, int attr_type, uint32_t ip, uint16_t port)
     return 32;
 }
 
+/*
+ * The library speaks nc_addr. These adapters read the address back as an
+ * integer and port so the checks below stay about behaviour rather than
+ * packing; one check in each half tests the nc_addr surface directly.
+ */
+static int
+stun_parse(const uint8_t *resp, size_t n, uint32_t *ip, uint16_t *port)
+{
+    struct nc_addr a;
+    int r = nc_stun_parse_response(resp, n, TXN, &a);
+
+    if (r == NC_NAT_OK)
+        nc_addr_get_ipv4(&a, ip, port);
+    return r;
+}
+
+static long
+roomcode_encode(char *out, size_t outlen, uint32_t ip, uint16_t port)
+{
+    struct nc_addr a;
+
+    nc_addr_set_ipv4(&a, ip, port);
+    return nc_roomcode_encode(out, outlen, &a);
+}
+
+static int
+roomcode_decode(const char *code, uint32_t *ip, uint16_t *port)
+{
+    struct nc_addr a;
+    int r = nc_roomcode_decode(code, &a);
+
+    if (r == NC_NAT_OK)
+        nc_addr_get_ipv4(&a, ip, port);
+    return r;
+}
+
 static void
 test_stun(void)
 {
@@ -105,7 +141,7 @@ test_stun(void)
     ip = 0;
     port = 0;
     check("3. an xor reply parses",
-          nc_stun_parse_response(resp, (size_t)n, TXN, &ip, &port) == NC_NAT_OK);
+          stun_parse(resp, (size_t)n, &ip, &port) == NC_NAT_OK);
     check("3. the address is un-xored", ip == 0xcb0071a2u);
     check("3. and the port", port == 47474);
 
@@ -114,7 +150,7 @@ test_stun(void)
     ip = 0;
     port = 0;
     check("4. a legacy reply parses",
-          nc_stun_parse_response(resp, (size_t)n, TXN, &ip, &port) == NC_NAT_OK);
+          stun_parse(resp, (size_t)n, &ip, &port) == NC_NAT_OK);
     check("4. the address is read as-is", ip == 0x08080808u && port == 3478);
 
     /* 5. A reply to someone else's request is dropped, not believed. This is
@@ -123,7 +159,7 @@ test_stun(void)
     n = build_response(resp, 0x0020, 0x01020304u, 1234);
     resp[8] ^= 0xff;
     check("5. a mismatched id is rejected",
-          nc_stun_parse_response(resp, (size_t)n, TXN, &ip, &port)
+          stun_parse(resp, (size_t)n, &ip, &port)
               == NC_NAT_ERR);
 
     /* 6. A wrong magic cookie, a wrong message type, and a short packet are
@@ -131,17 +167,17 @@ test_stun(void)
     n = build_response(resp, 0x0020, 0x01020304u, 1234);
     resp[4] ^= 0x01;
     check("6. a wrong cookie is rejected",
-          nc_stun_parse_response(resp, (size_t)n, TXN, &ip, &port)
+          stun_parse(resp, (size_t)n, &ip, &port)
               == NC_NAT_ERR);
     n = build_response(resp, 0x0020, 0x01020304u, 1234);
     resp[0] = 0x00;
     resp[1] = 0x01;                             /* a request, not a response */
     check("6. a non-success type is rejected",
-          nc_stun_parse_response(resp, (size_t)n, TXN, &ip, &port)
+          stun_parse(resp, (size_t)n, &ip, &port)
               == NC_NAT_ERR);
     n = build_response(resp, 0x0020, 0x01020304u, 1234);
     check("6. a truncated packet is rejected",
-          nc_stun_parse_response(resp, NC_STUN_REQUEST_LEN - 1, TXN, &ip, &port)
+          stun_parse(resp, NC_STUN_REQUEST_LEN - 1, &ip, &port)
               == NC_NAT_ERR);
 
     /* 7. An IPv6 mapped address is not reported: the family byte is not IPv4,
@@ -149,8 +185,21 @@ test_stun(void)
     n = build_response(resp, 0x0020, 0x01020304u, 1234);
     resp[25] = 0x02;                            /* family IPv6 */
     check("7. an ipv6-only reply is rejected",
-          nc_stun_parse_response(resp, (size_t)n, TXN, &ip, &port)
+          stun_parse(resp, (size_t)n, &ip, &port)
               == NC_NAT_ERR);
+
+    /* 8. The parsed value is a real IPv4 nc_addr, in the packing nc_udp and a
+     *    CONNECT_REDIRECT frame share, so it drops into netchan_connect as-is. */
+    {
+        struct nc_addr a;
+
+        n = build_response(resp, 0x0020, 0xcb0071a2u, 47474);
+        memset(&a, 0, sizeof(a));
+        check("8. the result is an nc_addr",
+              nc_stun_parse_response(resp, (size_t)n, TXN, &a) == NC_NAT_OK);
+        check("8. in the IPv4 packing",
+              a.len == 7 && a.a[0] == 4);
+    }
 }
 
 static void
@@ -163,7 +212,7 @@ test_roomcode(void)
 
     /* 1. An address and port survive the round trip, and the code is the
      *    dashed shape a person reads: XXXX-XXXX-XXXX. */
-    len = nc_roomcode_encode(code, sizeof(code), 0xcb0071a2u, 47474);
+    len = roomcode_encode(code, sizeof(code), 0xcb0071a2u, 47474);
     check("1. a code encodes", len == NC_ROOMCODE_STRLEN);
     check("1. it is dashed in threes",
           strlen(code) == NC_ROOMCODE_STRLEN &&
@@ -171,7 +220,7 @@ test_roomcode(void)
     ip = 0;
     port = 0;
     check("1. it decodes",
-          nc_roomcode_decode(code, &ip, &port) == NC_NAT_OK);
+          roomcode_decode(code, &ip, &port) == NC_NAT_OK);
     check("1. the address survives", ip == 0xcb0071a2u && port == 47474);
 
     /* 2. The decoder is forgiving the way Crockford's alphabet intends: case
@@ -184,7 +233,7 @@ test_roomcode(void)
         uint16_t port2;
         size_t i, j;
 
-        nc_roomcode_encode(code, sizeof(code), 0x7f000001u, 8080);
+        roomcode_encode(code, sizeof(code), 0x7f000001u, 8080);
         for (i = 0; code[i]; i++)
             lower[i] = (code[i] >= 'A' && code[i] <= 'Z')
                            ? (char)(code[i] + 32) : code[i];
@@ -195,9 +244,9 @@ test_roomcode(void)
         nodash[j] = '\0';
 
         check("2. lower case decodes",
-              nc_roomcode_decode(lower, &ip, &port) == NC_NAT_OK);
+              roomcode_decode(lower, &ip, &port) == NC_NAT_OK);
         check("2. and without dashes",
-              nc_roomcode_decode(nodash, &ip2, &port2) == NC_NAT_OK);
+              roomcode_decode(nodash, &ip2, &port2) == NC_NAT_OK);
         check("2. to the same address",
               ip == 0x7f000001u && port == 8080 &&
               ip2 == ip && port2 == port);
@@ -211,24 +260,24 @@ test_roomcode(void)
         uint16_t porto;
         size_t i;
 
-        nc_roomcode_encode(code, sizeof(code), 0x00000000u, 1);
+        roomcode_encode(code, sizeof(code), 0x00000000u, 1);
         ip = 0;
         port = 0;
-        nc_roomcode_decode(code, &ip, &port);   /* the reference reading */
+        roomcode_decode(code, &ip, &port);   /* the reference reading */
         for (i = 0; code[i]; i++)
             folded[i] = code[i] == '0' ? 'O' : (code[i] == '1' ? 'L' : code[i]);
         folded[i] = '\0';
         check("3. O and L fold to 0 and 1",
-              nc_roomcode_decode(folded, &ipo, &porto) == NC_NAT_OK &&
+              roomcode_decode(folded, &ipo, &porto) == NC_NAT_OK &&
               ipo == ip && porto == port);
     }
 
     /* 4. A zero address is a valid code: the codec carries the bits and leaves
      *    the question of whether an address is worth dialing to the caller. */
     check("4. a zero address encodes",
-          nc_roomcode_encode(code, sizeof(code), 0, 0) == NC_ROOMCODE_STRLEN);
+          roomcode_encode(code, sizeof(code), 0, 0) == NC_ROOMCODE_STRLEN);
     check("4. and decodes back to zero",
-          nc_roomcode_decode(code, &ip, &port) == NC_NAT_OK &&
+          roomcode_decode(code, &ip, &port) == NC_NAT_OK &&
           ip == 0 && port == 0);
 
     /* 5. A single mistyped character fails the check rather than decoding to
@@ -238,7 +287,7 @@ test_roomcode(void)
         char typo[NC_ROOMCODE_BUFSIZE];
         int rejected = 0, c;
 
-        nc_roomcode_encode(code, sizeof(code), 0xabcdef01u, 25565);
+        roomcode_encode(code, sizeof(code), 0xabcdef01u, 25565);
         /* Nudge the first data character to each other symbol; every one must
          * fail the check (a collision would be a weak check digit). */
         for (c = 0; c < 32; c++) {
@@ -246,7 +295,7 @@ test_roomcode(void)
             if (typo[0] == "0123456789ABCDEFGHJKMNPQRSTVWXYZ"[c])
                 continue;
             typo[0] = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"[c];
-            if (nc_roomcode_decode(typo, &ip, &port) == NC_NAT_ERR)
+            if (roomcode_decode(typo, &ip, &port) == NC_NAT_ERR)
                 rejected++;
         }
         check("5. every one-character typo is rejected", rejected == 31);
@@ -257,11 +306,11 @@ test_roomcode(void)
     ip = 0xdeadbeefu;
     port = 0x1234;
     check("6. too short is refused",
-          nc_roomcode_decode("ABCD-EFGH", &ip, &port) == NC_NAT_ERR);
+          roomcode_decode("ABCD-EFGH", &ip, &port) == NC_NAT_ERR);
     check("6. too long is refused",
-          nc_roomcode_decode("ABCD-EFGH-JKMN-PQRS", &ip, &port) == NC_NAT_ERR);
+          roomcode_decode("ABCD-EFGH-JKMN-PQRS", &ip, &port) == NC_NAT_ERR);
     check("6. a stray character is refused",
-          nc_roomcode_decode("ABCD-EFGH-JKM!", &ip, &port) == NC_NAT_ERR);
+          roomcode_decode("ABCD-EFGH-JKM!", &ip, &port) == NC_NAT_ERR);
     check("6. and the outputs are untouched",
           ip == 0xdeadbeefu && port == 0x1234);
 
@@ -271,7 +320,22 @@ test_roomcode(void)
         char tiny[NC_ROOMCODE_BUFSIZE - 1];
 
         check("7. a small buffer is refused",
-              nc_roomcode_encode(tiny, sizeof(tiny), 1, 1) == NC_NAT_ERR);
+              roomcode_encode(tiny, sizeof(tiny), 1, 1) == NC_NAT_ERR);
+    }
+
+    /* 8. Encoding takes an nc_addr and refuses one that is not IPv4: an unset
+     *    address and an IPv6 one both fail rather than encode nonsense. */
+    {
+        struct nc_addr unset, v6;
+
+        memset(&unset, 0, sizeof(unset));
+        memset(&v6, 0, sizeof(v6));
+        v6.len = 19;
+        v6.a[0] = 6;
+        check("8. an unset address is refused",
+              nc_roomcode_encode(code, sizeof(code), &unset) == NC_NAT_ERR);
+        check("8. an IPv6 address is refused",
+              nc_roomcode_encode(code, sizeof(code), &v6) == NC_NAT_ERR);
     }
 }
 

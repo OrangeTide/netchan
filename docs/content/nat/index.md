@@ -27,10 +27,13 @@ the core never names one: the application owns its event loop and its address
 family. STUN builds one packet and parses one; the caller sends it, retries it,
 and times it out. The room code is a pure function with no IO in it at all.
 
-Both speak a raw IPv4 address and port rather than `struct nc_addr`, so the file
-depends on nothing else in netchan and can be vendored on its own. The
-application bridges to `nc_addr` with the `nc_udp` helpers when it is ready to
-connect.
+Both speak `struct nc_addr`, the address type the rest of netchan already trades
+in. An address STUN learns, or a room code decodes, drops straight into
+`netchan_connect`, into a `CONNECT_REDIRECT` frame, or into a connection's peer
+address, with no translation. The only dependency is the header-only
+`src/nc_addr.h`, which holds the single definition of how an IPv4 address packs
+into an `nc_addr`, so `nc_udp`, the redirect frame, STUN, and the room code all
+agree on the layout and the file still links against nothing.
 
 ## Learning your address with STUN
 

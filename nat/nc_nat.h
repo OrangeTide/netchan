@@ -16,14 +16,18 @@
  *                  to reach. This works when the router will forward a port by
  *                  hand; it does not open one.
  *
- *   nc_roomcode_*  turns that address and port into a short string a person can
- *                  read over voice chat and type back, with a check against
- *                  typos, and back again. No server is involved: a room code is
- *                  just an address written short.
+ *   nc_roomcode_*  turns that address into a short string a person can read
+ *                  over voice chat and type back, with a check against typos,
+ *                  and back again. No server is involved: a room code is just
+ *                  an address written short.
  *
- * Both speak raw IPv4 and port rather than struct nc_addr, so this file depends
- * on nothing in netchan and can be vendored alone. The application bridges to
- * nc_addr with the nc_udp helpers when it is ready to connect.
+ * Both speak struct nc_addr, the address type the rest of netchan already
+ * trades in, so an address STUN learns or a room code decodes drops straight
+ * into netchan_connect, into a CONNECT_REDIRECT frame, or into a connection's
+ * peer address with no translation. The only dependency is src/nc_addr.h, which
+ * is header-only, so this file still links against nothing. Today only IPv4
+ * addresses are carried; nc_addr has room for IPv6, so a wider room code later
+ * is a change to the code format, not to these signatures.
  *
  * WHAT THIS IS NOT
  *
@@ -43,6 +47,8 @@
 
 #include <stdint.h>
 #include <stddef.h>
+
+#include "nc_addr.h"
 
 #define NC_NAT_OK  (0)
 #define NC_NAT_ERR (-1)
@@ -81,14 +87,15 @@ nc_stun_build_request(void *out, size_t outlen,
 /**
  * Parse a datagram as the reply to the request built with txn. On a binding
  * success response that matches txn and carries an IPv4 mapped address
- * (XOR-MAPPED-ADDRESS, or the legacy MAPPED-ADDRESS), writes the public address
- * and port in host byte order and returns NC_NAT_OK.
+ * (XOR-MAPPED-ADDRESS, or the legacy MAPPED-ADDRESS), fills *out with that
+ * public address in the nc_addr IPv4 packing and returns NC_NAT_OK. The result
+ * is ready for netchan_connect or a CONNECT_REDIRECT frame.
  *
  * Returns NC_NAT_ERR for anything else: a short packet, a wrong message type, a
  * transaction id that is not the one we sent (so a stray or forged reply is
- * dropped, not believed), or a reply that only names an IPv6 address. Rejecting
- * a mismatched id is the whole of the anti-spoofing check, which is why the id
- * had to be random.
+ * dropped, not believed), or a reply that only names an IPv6 address. On
+ * NC_NAT_ERR *out is untouched. Rejecting a mismatched id is the whole of the
+ * anti-spoofing check, which is why the id had to be random.
  *
  * IPv6 is deliberately not reported here. A v6 host that can be reached directly
  * does not need STUN to learn its address, and the room code below is v4-only
@@ -97,7 +104,7 @@ nc_stun_build_request(void *out, size_t outlen,
 int
 nc_stun_parse_response(const void *pkt, size_t len,
                        const uint8_t txn[NC_STUN_TXN_LEN],
-                       uint32_t *ipv4_out, uint16_t *port_out);
+                       struct nc_addr *out);
 
 /* -------------------------------------------------------------- room code -- */
 
@@ -119,23 +126,22 @@ nc_stun_parse_response(const void *pkt, size_t len,
 #define NC_ROOMCODE_BUFSIZE   15     /* NC_ROOMCODE_STRLEN + the terminator */
 
 /**
- * Encode an IPv4 address and port (host byte order) as a dashed room code.
- * Writes NC_ROOMCODE_STRLEN characters and a terminator. Returns the string
- * length (NC_ROOMCODE_STRLEN), or NC_NAT_ERR if outlen is below
- * NC_ROOMCODE_BUFSIZE. A zero address encodes like any other; it is the
- * caller's business whether an address is worth handing out.
+ * Encode an IPv4 nc_addr as a dashed room code. Writes NC_ROOMCODE_STRLEN
+ * characters and a terminator. Returns the string length (NC_ROOMCODE_STRLEN),
+ * or NC_NAT_ERR if outlen is below NC_ROOMCODE_BUFSIZE or addr is not an IPv4
+ * address. A zero address encodes like any other; it is the caller's business
+ * whether an address is worth handing out.
  */
 long
-nc_roomcode_encode(char *out, size_t outlen, uint32_t ipv4, uint16_t port);
+nc_roomcode_encode(char *out, size_t outlen, const struct nc_addr *addr);
 
 /**
- * Decode a room code into an address and port (host byte order). Accepts the
- * code with or without dashes, in any case, with O/I/L for 0/1/1. Returns
- * NC_NAT_OK, or NC_NAT_ERR if the code is the wrong length, holds a character
- * outside the alphabet, or fails its check digits. On NC_NAT_ERR the outputs
- * are left untouched.
+ * Decode a room code into an IPv4 nc_addr. Accepts the code with or without
+ * dashes, in any case, with O/I/L for 0/1/1. Returns NC_NAT_OK, or NC_NAT_ERR if
+ * the code is the wrong length, holds a character outside the alphabet, or fails
+ * its check digits. On NC_NAT_ERR *out is untouched.
  */
 int
-nc_roomcode_decode(const char *code, uint32_t *ipv4_out, uint16_t *port_out);
+nc_roomcode_decode(const char *code, struct nc_addr *out);
 
 #endif /* NC_NAT_H */
