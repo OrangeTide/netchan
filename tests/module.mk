@@ -130,6 +130,16 @@ $(test_nc_beacon_RUN)
 endef
 TEST_TARGETS += test_nc_beacon
 
+# --- the nat helpers: STUN binding and the room-code codec ---
+EXECUTABLES += test_nc_nat
+test_nc_nat_DIR := $(ROOT)
+test_nc_nat_SRCS = test_nc_nat.c
+test_nc_nat_LIBS = nc_nat
+define test_nc_nat_TESTCMD
+$(test_nc_nat_RUN)
+endef
+TEST_TARGETS += test_nc_nat
+
 # --- the five on-disk formats, in a temporary directory ---
 EXECUTABLES += test_keystore
 test_keystore_DIR := $(ROOT)
