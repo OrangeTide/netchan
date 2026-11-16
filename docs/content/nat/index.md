@@ -43,7 +43,8 @@ reply.
 This is useful when a port is already forwarded, whether by hand or by a router
 friendly enough that the outgoing STUN packet leaves the door ajar for the reply
 and the game traffic behind it. It does not open a port, and it is not NAT
-traversal. See [below](#what-nc_nat-does-not-do).
+traversal; the last section says what that distinction means and what the real
+thing would take.
 
 ### The transaction id has to be random
 
