@@ -38,7 +38,7 @@ Piping anything from the network into a shell means trusting the server and
 the connection; reading it first is the better habit:
 
 ```sh
-TAG=v0.5.0    # whichever release you want
+TAG=v0.11.0    # whichever release you want
 curl -fsSLO "https://raw.githubusercontent.com/OrangeTide/netchan/$TAG/tools/vendor.sh"
 less vendor.sh && sh vendor.sh --version "$TAG" --layer auth
 ```
