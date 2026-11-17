@@ -8,7 +8,7 @@ Releases are SemVer and are tagged `vMAJOR.MINOR.PATCH`. The tag is the
 release: GitHub serves a source snapshot for it, which is what
 `tools/vendor.sh` fetches.
 
-## 0.12.0 - UNRELEASED
+## 0.12.0 - 2026-11-16
 
 ### Changed
 
