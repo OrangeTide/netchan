@@ -149,6 +149,27 @@ All of them are plain text with hex fields, so they can be read, diffed, and
 edited by hand. That is deliberate. The trust decisions live in files an
 operator controls, not inside the protocol.
 
+## rendezvous -- the whole reachability path
+
+Two peers that have never met end up with a netchan session between them, and
+all three sibling layers do their part along the way. `nc_stun_*` learns each
+peer's public address, `nc_roomcode_*` writes the host's short, `nc_reach_*`
+punches the path open, and netchan runs the ordinary handshake over it.
+
+```sh
+rendezvous_demo
+```
+
+It takes no arguments and runs the whole thing in one process: a rendezvous
+socket and two peer sockets on the loopback, pumped by one loop. It prints a
+transcript of each step and returns zero once a message has crossed in both
+directions, so running it is its own smoke test. On the loopback there is no NAT
+to traverse, so the punch succeeds at once; the packets on the wire are the ones
+two peers behind real routers would send. The rendezvous here also answers STUN,
+which a real one leaves to a public STUN server: the library builds and parses
+STUN on the client side only. See the [punching design page](../docs/content/reach/)
+for the longer argument.
+
 ## What these demos are not
 
 - **One client at a time.** `auth_link` holds a single netchan connection. A

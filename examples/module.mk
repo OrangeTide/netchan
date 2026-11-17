@@ -20,7 +20,9 @@
 #                ssh-shaped login.
 #   discovery/   nc_beacon with sockets under it: a server announcing itself
 #                on the LAN and a browser finding it.
+#   rendezvous/  the whole reachability path in one program: STUN, a room
+#                code, a punch, and netchan over the opened path.
 
 ROOT := $(dir $(lastword $(MAKEFILE_LIST)))
 
-SUBDIRS = iox common chat typed ws_gateway echo auth discovery
+SUBDIRS = iox common chat typed ws_gateway echo auth discovery rendezvous
