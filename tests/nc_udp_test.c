@@ -175,6 +175,12 @@ pump_both(int cfd, struct netchan_conn *cl, int sfd, struct netchan_conn *sv)
     for (int i = 0; i < 64 && idle < 2; i++) {
         int a, b;
 
+        /* A real loop services each end for timers: reliable retransmits and,
+         * since migration now takes a return-routability round trip, the path
+         * challenge and the resend of data whose first ack went to the old
+         * address before the new one was proven. */
+        netchan_service(cl, now_ms());
+        netchan_service(sv, now_ms());
         flush(cfd, cl);
         flush(sfd, sv);
         a = drain(sfd, sv);
@@ -257,8 +263,20 @@ test_socket_session_and_migration(void)
     pump_both(cfd2, cl, sfd, sv);
     CHECK(read_chan_msg(sv, m2, strlen(m2)), "server did not receive m2 after migration");
 
-    /* the reliable m2 is only acked if the server migrated its replies to
-     * the new socket, so a completed ack proves the migration end to end. */
+    /*
+     * Migration now takes a return-routability round trip. The server does not
+     * trust the new address on sight: it challenges it and moves its replies
+     * there only once the client echoes the nonce. The reliable m2, whose first
+     * ack went to the old address before the new one was proven, is recovered
+     * by a retransmit onto the proven path. A completed ack still proves the
+     * migration end to end; it just costs the extra round trip. Pump until the
+     * retransmit timer has had time to fire and the ack lands.
+     */
+    for (int i = 0; i < 40; i++) {
+        netchan_chan_stats(ch, &st);
+        if (st.msgs_acked >= 2) break;
+        pump_both(cfd2, cl, sfd, sv);
+    }
     netchan_chan_stats(ch, &st);
     CHECK(st.msgs_acked >= 2, "server ack did not follow the migrated address");
 

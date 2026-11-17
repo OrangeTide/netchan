@@ -10,6 +10,24 @@ release: GitHub serves a source snapshot for it, which is what
 
 ## 0.12.0 - UNRELEASED
 
+### Changed
+
+- A connection no longer trusts a new peer address on sight. When a datagram
+  arrives from an address other than the current peer, and it carries live
+  traffic for a known channel, the core challenges that address with an
+  unguessable nonce and moves the connection to it only once the nonce is
+  echoed back. A genuine peer that has moved completes the round trip; a
+  spoofed source never sees the challenge, so an attacker who learns a
+  connection id can no longer redirect the flow to a victim. This replaces the
+  earlier adopt-on-sight migration, which was a hijack and amplification
+  primitive. It costs a migrating peer one extra round trip, and the first
+  reliable message sent across the move is recovered by its ordinary
+  retransmit onto the proven path.
+
+  This adds two frames to the wire, `PATH_CHALLENGE` and `PATH_RESPONSE`, and
+  bumps the wire version. A peer on 0.11 and a peer on 0.12 will not complete a
+  handshake, which is the SemVer contract for a minor release.
+
 ### Added
 
 - A `nat` layer under `nat/`, built into the default build, for reaching a

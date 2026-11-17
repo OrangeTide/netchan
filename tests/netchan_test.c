@@ -50,6 +50,12 @@ make_addr(uint32_t ip, uint16_t port)
     return a;
 }
 
+static int
+addr_eq(const struct nc_addr *a, const struct nc_addr *b)
+{
+    return a->len == b->len && memcmp(a->a, b->a, a->len) == 0;
+}
+
 /****************************************************************
  * Loopback -- pump packets between client and server
  ****************************************************************/
@@ -711,6 +717,86 @@ test_connection_migration(void)
     PASS();
 }
 
+/*
+ * The migration above delivers the data, but the server must not move its peer
+ * address to the new source on sight: a spoofed source would then redirect the
+ * whole flow. It challenges the candidate first and adopts it only once the
+ * nonce is echoed. This drives that round trip by hand so it can watch the
+ * address the server would send to at each step.
+ */
+static void
+test_migration_return_routability(void)
+{
+    struct netchan_conn *client = netchan_open(0);
+    struct netchan_conn *server = netchan_open(1);
+
+    struct nc_addr caddr = make_addr(0x7f000001, 10006);
+    struct nc_addr saddr = make_addr(0x7f000001, 20006);
+    struct nc_addr new_caddr = make_addr(0x0a000001, 30001);
+    struct nc_addr dst;
+    struct netchan_event ev;
+    struct netchan_chan *cch, *sch;
+    uint8_t buf[2048];
+    uint8_t chal[2048];
+    size_t n, cn;
+    TEST(migration_return_routability);
+
+    netchan_connect(client, &saddr);
+    pump(client, server, &caddr);
+    netchan_accept(server);
+    pump_both(client, server, &caddr, &saddr);
+    while (netchan_poll(client, &ev)) {}
+    while (netchan_poll(server, &ev)) {}
+
+    /* A client->server channel so a packet from the new address passes
+     * migration validation, and a server->client channel so the address the
+     * server would send to is observable. */
+    cch = netchan_chan_open(client, NETCHAN_UNRELIABLE, NETCHAN_DIR_SEND, "pos");
+    sch = netchan_chan_open(server, NETCHAN_UNRELIABLE, NETCHAN_DIR_SEND, "echo");
+    pump_both(client, server, &caddr, &saddr);
+    while (netchan_poll(client, &ev)) {}
+    while (netchan_poll(server, &ev)) {}
+
+    /* Data arrives from a new client address. */
+    netchan_chan_write(cch, "moved", 5);
+    n = grab(client, buf, sizeof(buf));
+    CHECK(n > 0, "client produced no packet");
+    netchan_feed(server, buf, n, &new_caddr, g_now);
+
+    /* The server's first output is a path challenge, addressed to the
+     * candidate, not a reply to it on the old path. Keep it for delivery. */
+    cn = netchan_send_next(server, chal, sizeof(chal), &dst, g_now);
+    CHECK(cn > 0, "server did not emit a challenge");
+    CHECK(addr_eq(&dst, &new_caddr), "challenge not sent to the candidate");
+    CHECK(chal[7] == 0x0C, "first frame is not a path challenge");
+
+    /* The address is not adopted yet: a message the server sends still goes to
+     * the old, proven address. */
+    netchan_chan_write(sch, "a", 1);
+    n = netchan_send_next(server, buf, sizeof(buf), &dst, g_now);
+    CHECK(n > 0, "server produced no data packet");
+    CHECK(addr_eq(&dst, &caddr), "server migrated before the address was proven");
+
+    /* Deliver the challenge to the client. It sits at the new address but still
+     * sees the server at saddr, so it does not migrate; it echoes the nonce. */
+    netchan_feed(client, chal, cn, &saddr, g_now);
+    n = grab(client, buf, sizeof(buf));
+    CHECK(n > 0, "client did not emit a response");
+    CHECK(buf[7] == 0x0D, "first frame is not a path response");
+
+    /* The response proves the candidate. The server adopts it, so its next
+     * message follows to the new address. */
+    netchan_feed(server, buf, n, &new_caddr, g_now);
+    netchan_chan_write(sch, "b", 1);
+    n = netchan_send_next(server, buf, sizeof(buf), &dst, g_now);
+    CHECK(n > 0, "server produced no packet after the response");
+    CHECK(addr_eq(&dst, &new_caddr), "server did not migrate after the proof");
+
+    netchan_close(client);
+    netchan_close(server);
+    PASS();
+}
+
 static void
 test_channel_close(void)
 {
@@ -1250,6 +1336,7 @@ main(void)
     test_bidirectional_channels();
     test_multiple_messages();
     test_connection_migration();
+    test_migration_return_routability();
     test_channel_close();
     test_peek_id();
     test_graceful_disconnect();

@@ -29,13 +29,14 @@ Most of the machinery is already here, and it already speaks `nc_addr`.
   reads it with a straight copy and raises `NETCHAN_EV_REDIRECT`. One peer can
   already tell another "connect over there instead".
 - The core already migrates. When a datagram arrives from an address that
-  differs from `peer_addr`, the core adopts the new one, so a connection follows
-  a peer whose address changes under it.
+  differs from `peer_addr`, the core follows the peer to it, so a connection
+  survives an address that changes under it. It now validates the new address
+  before committing to it, which the validated-path section below describes.
 
 So netchan already has an address as the living currency of a connection, a way
-to hand one peer another's address, and address rebinding. What it does not have
-is a safe way to trust a new address, and one outlier that refuses the common
-currency.
+to hand one peer another's address, and validated address rebinding. What remains
+is one outlier that refuses the common currency, and the driver that puts the
+pieces together.
 
 ## One address currency
 
@@ -79,12 +80,12 @@ address rather than sends to one.
 Here is the piece that genuinely belongs in the core, and the reason reachability
 cannot simply be a well-behaved sibling.
 
-The core today trusts an address on sight. It rebinds `peer_addr` to any source
-address a datagram claims, and it retargets to any address a redirect frame
-names. Neither is checked. An attacker who learns a connection id can redirect
-the flow to a victim, and a forged source address can move a session to a machine
-that never asked for it. Address rebinding without a check is a hijack and
-amplification primitive, not a feature.
+The core used to trust an address on sight. It rebound `peer_addr` to any source
+address a datagram claimed, with only a check that the packet carried live
+traffic for a known channel. An attacker who learned a connection id could
+redirect the flow to a victim, and a forged source address could move a session
+to a machine that never asked for it. Address rebinding without a real check is a
+hijack and amplification primitive, not a feature.
 
 Reaching a peer across the internet makes new addresses routine: a STUN result,
 a room code a person typed, a redirect from a rendezvous, a migration as a NAT
@@ -92,13 +93,15 @@ rebinds. Every one of them is an address the core is being asked to act on, and
 every one needs the same guarantee, that the peer is really at the address
 before the connection commits to it.
 
-So the design adds one mechanism: a return-routability challenge. Before the core
-trusts a new or claimed address, it sends a small nonce there and does not act
-until the nonce comes back. A genuine peer echoes it; a spoofed source never sees
-it. The same challenge covers migration, redirect, and the moment a punched path
-first carries a packet, and it is the same token that validates a client's
-address before a server commits connection state to it. One check, used
-everywhere an address changes hands.
+So the core gained one mechanism: a return-routability challenge. Before it
+trusts a new address, it sends a small nonce there and does not move the
+connection until the nonce comes back. A genuine peer echoes it; a spoofed source
+never sees it. This ships for migration today: a datagram from a new address now
+arms a challenge to that address, and `peer_addr` follows only once the nonce
+returns. The same token is what will validate a redirect target, the moment a
+punched path first carries a packet, and a client's address before a server
+commits connection state to it. One check, used everywhere an address changes
+hands.
 
 This belongs in the core because the address it protects, `peer_addr`, and the
 redirect handler it guards both live there. It costs the core nothing it was
@@ -154,12 +157,13 @@ and a room code over raw IPv4 and port, depending on nothing else and opening no
 socket. This design keeps that layer's reach but changes its shape, and it lands
 in stages so each is useful on its own:
 
-- The nat layer speaks `nc_addr`, and one pack-and-unpack helper defines the IPv4
-  packing for `nc_udp`, the redirect frame, STUN, and the room code together. No
-  wire change.
-- The core gains the return-routability challenge, so migration and redirect stop
-  trusting an address on sight, and a server can demand an address proof before
-  it commits connection state. This changes the wire, so it lands on a minor
-  version.
-- A reachability driver orchestrates rendezvous and the simultaneous open over
-  the validated path, built on the two steps above.
+- Done: the nat layer speaks `nc_addr`, and one pack-and-unpack helper defines
+  the IPv4 packing for `nc_udp`, the redirect frame, STUN, and the room code
+  together. No wire change.
+- Done: the core gained the return-routability challenge, so migration stops
+  trusting an address on sight. The `PATH_CHALLENGE` and `PATH_RESPONSE` frames
+  change the wire, so this landed on a minor version. The same token is ready to
+  guard a redirect target and to let a server demand an address proof before it
+  commits connection state, which the driver below will use.
+- Next: a reachability driver orchestrates rendezvous and the simultaneous open
+  over the validated path, built on the two steps above.

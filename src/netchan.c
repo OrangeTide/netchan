@@ -23,7 +23,7 @@
  * Internal constants
  ****************************************************************/
 
-#define NC_VERSION          0x01
+#define NC_VERSION          0x02
 #define NC_PKT_FLAG_INIT    0x01
 #define NC_PKT_FLAG_PKTNUM  0x02
 #define NC_HDR_INIT_SIZE    5
@@ -41,6 +41,10 @@
 #define NC_FRAME_DATA            0x09
 #define NC_FRAME_ACK             0x0A
 #define NC_FRAME_WINDOW_UPDATE   0x0B
+#define NC_FRAME_PATH_CHALLENGE  0x0C
+#define NC_FRAME_PATH_RESPONSE   0x0D
+
+#define NC_PATH_NONCE_LEN   8
 
 #define NC_MAX_CHANNELS     256
 #define NC_EVENT_QUEUE      16
@@ -69,6 +73,8 @@
 #define NC_CONNECT_RETRY_MS 500
 #define NC_CONNECT_RETRIES  5
 #define NC_PING_INTERVAL_MS 5000
+#define NC_PATH_RETRY_MS    500     /* resend an unanswered path challenge */
+#define NC_PATH_RETRIES     4       /* then give up on the candidate address */
 
 /****************************************************************
  * Byte I/O helpers
@@ -186,6 +192,23 @@ nc_random_id(void)
     return id;
 }
 
+/*
+ * An 8-byte path-validation nonce. It stands between a connection and an
+ * attacker who spoofs a source address, so it must be unguessable; it draws
+ * from the same source as a connection id, two words of it.
+ */
+static void
+nc_random_nonce(uint8_t out[NC_PATH_NONCE_LEN])
+{
+    uint32_t a = nc_random_id();
+    uint32_t b = nc_random_id();
+
+    out[0] = (uint8_t)(a >> 24); out[1] = (uint8_t)(a >> 16);
+    out[2] = (uint8_t)(a >> 8);  out[3] = (uint8_t)a;
+    out[4] = (uint8_t)(b >> 24); out[5] = (uint8_t)(b >> 16);
+    out[6] = (uint8_t)(b >> 8);  out[7] = (uint8_t)b;
+}
+
 /****************************************************************
  * Internal structures
  ****************************************************************/
@@ -272,6 +295,17 @@ struct netchan_conn {
     uint8_t  connect_attempts;
     uint32_t ping_sent_ms;
     uint32_t ping_opaque;
+
+    /* return-routability of a candidate peer address. A datagram from an
+     * address other than peer_addr is not trusted on sight; the core challenges
+     * the candidate with an unguessable nonce and only adopts it once the nonce
+     * comes back. path_addr.len == 0 means no validation is in flight. */
+    struct nc_addr path_addr;
+    uint8_t  path_nonce[NC_PATH_NONCE_LEN];
+    uint8_t  path_pending;      /* a challenge is queued to send */
+    uint8_t  path_attempts;
+    uint32_t path_sent_ms;
+
     uint32_t rtt_ms;
     uint32_t rtt_min_ms;
     uint32_t pkts_sent;
@@ -429,6 +463,15 @@ ctrl_pong(struct netchan_conn *c, uint32_t opaque)
     if (!p) return;
     p[0] = NC_FRAME_PONG;
     wr32(p + 1, opaque);
+}
+
+static void
+ctrl_path_response(struct netchan_conn *c, const uint8_t nonce[NC_PATH_NONCE_LEN])
+{
+    uint8_t *p = ctrl_reserve(c, 1 + NC_PATH_NONCE_LEN);
+    if (!p) return;
+    p[0] = NC_FRAME_PATH_RESPONSE;
+    memcpy(p + 1, nonce, NC_PATH_NONCE_LEN);
 }
 
 static void
@@ -783,6 +826,35 @@ process_pong(struct netchan_conn *c, const uint8_t *p, size_t len)
 }
 
 static int
+process_path_challenge(struct netchan_conn *c, const uint8_t *p, size_t len)
+{
+    if (len < 1 + NC_PATH_NONCE_LEN) return NETCHAN_ERR_PROTO;
+    /* Echo the nonce straight back. The response rides the control queue to
+     * peer_addr, which is the address the challenge came from, so only a host
+     * actually reachable at that address can complete the round trip. */
+    ctrl_path_response(c, p + 1);
+    return 1 + NC_PATH_NONCE_LEN;
+}
+
+static int
+process_path_response(struct netchan_conn *c, const uint8_t *p, size_t len)
+{
+    if (len < 1 + NC_PATH_NONCE_LEN) return NETCHAN_ERR_PROTO;
+    /* The nonce is the whole proof: unguessable and used once, so a reply that
+     * carries it can only come from the host we challenged. Adopt the candidate
+     * as the peer address and retire the challenge. A reply that does not match,
+     * or arrives with nothing in flight, is ignored. */
+    if (c->path_addr.len > 0 &&
+        memcmp(p + 1, c->path_nonce, NC_PATH_NONCE_LEN) == 0) {
+        c->peer_addr = c->path_addr;
+        c->path_addr.len = 0;
+        c->path_pending = 0;
+        c->path_attempts = 0;
+    }
+    return 1 + NC_PATH_NONCE_LEN;
+}
+
+static int
 process_channel_open(struct netchan_conn *c, const uint8_t *p, size_t len)
 {
     struct netchan_chan *ch;
@@ -1084,6 +1156,12 @@ parse_frames(struct netchan_conn *c, const uint8_t *data, size_t len)
         case NC_FRAME_WINDOW_UPDATE:
             consumed = process_window_update(c, data + pos, len - pos);
             break;
+        case NC_FRAME_PATH_CHALLENGE:
+            consumed = process_path_challenge(c, data + pos, len - pos);
+            break;
+        case NC_FRAME_PATH_RESPONSE:
+            consumed = process_path_response(c, data + pos, len - pos);
+            break;
         default:
             return NETCHAN_ERR_PROTO;
         }
@@ -1116,6 +1194,26 @@ validate_migration(struct netchan_conn *c, const uint8_t *frames, size_t len)
         break;
     }
     return 0;
+}
+
+/*
+ * A datagram arrived from an address other than peer_addr. Before the core
+ * trusts it, challenge the candidate so a spoofed source address cannot move
+ * the session. A burst of packets from the same new address must not restart
+ * an in-flight challenge, so a candidate already under validation is left
+ * alone; a different candidate replaces it with a fresh nonce.
+ */
+static void
+path_challenge_begin(struct netchan_conn *c, const struct nc_addr *cand)
+{
+    if (c->path_addr.len == cand->len &&
+        memcmp(c->path_addr.a, cand->a, cand->len) == 0)
+        return;
+    c->path_addr = *cand;
+    nc_random_nonce(c->path_nonce);
+    c->path_pending = 1;
+    c->path_attempts = 0;
+    c->path_sent_ms = 0;
 }
 
 /****************************************************************
@@ -1274,14 +1372,16 @@ netchan_feed(struct netchan_conn *c, const void *pkt, size_t len,
     if (!(flags & NC_PKT_FLAG_INIT) && conn_id != c->local_id)
         return NETCHAN_ERR_PROTO;
 
-    /* connection migration: update peer address if changed */
+    /* connection migration: a datagram from a new address does not move the
+     * session on sight. If it carries live traffic for a known channel, start a
+     * return-routability challenge to the candidate; peer_addr follows only once
+     * the nonce is echoed (see process_path_response). */
     if (from && from->len > 0 && c->peer_addr.len > 0 &&
         c->state == NETCHAN_STATE_CONNECTED) {
         if (from->len != c->peer_addr.len ||
             memcmp(from->a, c->peer_addr.a, from->len) != 0) {
-            if (validate_migration(c, p + hdr_size, len - hdr_size)) {
-                c->peer_addr = *from;
-            }
+            if (validate_migration(c, p + hdr_size, len - hdr_size))
+                path_challenge_begin(c, from);
         }
     }
 
@@ -1327,6 +1427,29 @@ netchan_send_next(struct netchan_conn *c, void *buf, size_t buflen,
     int has_data = 0;
 
     c->now_ms = now_ms;
+
+    /*
+     * A pending path challenge is a datagram of its own, addressed to the
+     * candidate rather than peer_addr, so it cannot share a packet with data
+     * bound for the current peer. It goes out before anything else and the
+     * caller delivers it to *to, which is the candidate for this packet only.
+     */
+    if (c->path_pending && c->path_addr.len > 0 &&
+        c->state == NETCHAN_STATE_CONNECTED &&
+        buflen >= NC_HDR_FULL_SIZE + 1 + NC_PATH_NONCE_LEN) {
+        p[0] = NC_PKT_FLAG_PKTNUM;
+        wr32(p + 1, c->remote_id);
+        wr16(p + 5, c->next_pkt_num++);
+        p[NC_HDR_FULL_SIZE] = NC_FRAME_PATH_CHALLENGE;
+        memcpy(p + NC_HDR_FULL_SIZE + 1, c->path_nonce, NC_PATH_NONCE_LEN);
+        if (to)
+            *to = c->path_addr;
+        c->path_pending = 0;
+        c->path_sent_ms = now_ms;
+        c->path_attempts++;
+        c->pkts_sent++;
+        return NC_HDR_FULL_SIZE + 1 + NC_PATH_NONCE_LEN;
+    }
 
     if (c->ctrl_len > 0)
         has_data = 1;
@@ -1526,6 +1649,28 @@ netchan_service(struct netchan_conn *c, uint32_t now_ms)
         if (since_send < NC_PING_INTERVAL_MS) {
             int remain = NC_PING_INTERVAL_MS - since_send;
             if (next_ms < 0 || remain < next_ms) next_ms = remain;
+        }
+    }
+
+    /* path validation: resend an unanswered challenge, abandon the candidate
+     * after a few tries so a silent address never strands the connection. */
+    if (c->state == NETCHAN_STATE_CONNECTED && c->path_addr.len > 0) {
+        if (c->path_pending) {
+            next_ms = 0;        /* a challenge is waiting to be sent */
+        } else {
+            uint32_t elapsed = nc_ms_since(now_ms, c->path_sent_ms);
+            if (elapsed >= NC_PATH_RETRY_MS) {
+                if (c->path_attempts >= NC_PATH_RETRIES) {
+                    c->path_addr.len = 0;
+                    c->path_attempts = 0;
+                } else {
+                    c->path_pending = 1;
+                    next_ms = 0;
+                }
+            } else {
+                int remain = NC_PATH_RETRY_MS - elapsed;
+                if (next_ms < 0 || remain < next_ms) next_ms = remain;
+            }
         }
     }
 
