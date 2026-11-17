@@ -48,6 +48,18 @@ release: GitHub serves a source snapshot for it, which is what
   port. Opening one is the caller's, and hole punching over `CONNECT_REDIRECT`
   is the direction these helpers point at.
 
+- A `reach` layer under `reach/`, built into the default build, that punches a
+  path between two peers who both sit behind a NAT that will not forward a port.
+  Once STUN has learned each peer's public address and a rendezvous has exchanged
+  them, `nc_reach_session` derives the shared token, the address to punch toward,
+  and which peer becomes the netchan client, the same on both sides.
+  `nc_reach_build` / `nc_reach_parse` are the one small punch packet. Like the
+  nat helpers it is a sibling of the core: it opens no socket and runs no timer,
+  so the application owns the cadence of the punches, and it links against
+  nothing but `nc_addr`. The punch opens a path; the netchan handshake and its
+  path challenge are what validate the address afterwards. A symmetric NAT needs
+  port prediction or a relay and is not punched through here.
+
 ## 0.11.0 - 2026-11-15
 
 ### Added
