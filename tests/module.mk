@@ -140,6 +140,16 @@ $(test_nc_nat_RUN)
 endef
 TEST_TARGETS += test_nc_nat
 
+# --- the hole-punch session and punch packet ---
+EXECUTABLES += test_nc_reach
+test_nc_reach_DIR := $(ROOT)
+test_nc_reach_SRCS = test_nc_reach.c
+test_nc_reach_LIBS = nc_reach
+define test_nc_reach_TESTCMD
+$(test_nc_reach_RUN)
+endef
+TEST_TARGETS += test_nc_reach
+
 # --- the five on-disk formats, in a temporary directory ---
 EXECUTABLES += test_keystore
 test_keystore_DIR := $(ROOT)
